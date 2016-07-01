@@ -16,6 +16,12 @@ public:
          , unsigned int threadCount
          , ContentGenerator &contentGenerator);
 
+    /** Debug version: uses internal dummy content generator that returns 404 on
+     *  every request.
+     */
+    Http(const utility::TcpEndpoint &listen
+         , unsigned int threadCount);
+
     struct Detail;
 
 private:

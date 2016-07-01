@@ -236,12 +236,25 @@ private:
 
 std::atomic<std::size_t> Connection::idGenerator_(0);
 
+class DummyContentGenerator : public ContentGenerator {
+public:
+    DummyContentGenerator() {}
+private:
+    virtual void generate_impl(const std::string&
+                               , const Sink::pointer &sink)
+    {
+        sink->error(NotFound("not found"));
+    }
+};
+
 } // namespace
 
 class Http::Detail : boost::noncopyable {
 public:
     Detail(const utility::TcpEndpoint &listen, unsigned int threadCount
            , ContentGenerator &contentGenerator);
+    Detail(const utility::TcpEndpoint &listen, unsigned int threadCount);
+
     ~Detail() { stop(); }
 
     void request(const Connection::pointer &connection
@@ -257,6 +270,7 @@ private:
 
     void startAccept();
 
+    std::unique_ptr<DummyContentGenerator> dummyGenerator_;
     ContentGenerator &contentGenerator_;
 
     asio::io_service ios_;
@@ -273,6 +287,16 @@ Http::Detail::Detail(const utility::TcpEndpoint &listen
                      , unsigned int threadCount
                      , ContentGenerator &contentGenerator)
     : contentGenerator_(contentGenerator)
+    , work_(std::ref(ios_))
+    , acceptor_(ios_, listen.value, true)
+{
+    start(threadCount);
+}
+
+Http::Detail::Detail(const utility::TcpEndpoint &listen
+                     , unsigned int threadCount)
+    : dummyGenerator_(new DummyContentGenerator())
+    , contentGenerator_(*dummyGenerator_)
     , work_(std::ref(ios_))
     , acceptor_(ios_, listen.value, true)
 {
@@ -1054,6 +1078,11 @@ void Http::Detail::request(const Connection::pointer &connection
 Http::Http(const utility::TcpEndpoint &listen, unsigned int threadCount
            , ContentGenerator &contentGenerator)
     : detail_(std::make_shared<Detail>(listen, threadCount, contentGenerator))
+{
+}
+
+Http::Http(const utility::TcpEndpoint &listen, unsigned int threadCount)
+    : detail_(std::make_shared<Detail>(listen, threadCount))
 {
 }
 
