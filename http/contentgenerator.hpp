@@ -54,7 +54,7 @@ public:
 
         virtual ~DataSource() {}
 
-        virtual FileInfo stat() const;
+        virtual FileInfo stat() const = 0;
 
         virtual std::size_t read(char *buf, std::size_t size
                                  , std::size_t off) = 0;
@@ -174,14 +174,8 @@ inline void Sink::seeOther(const std::string &url) { seeOther_impl(url); }
 
 inline void Sink::error(const std::exception_ptr &exc) { error_impl(exc); }
 
-template <typename T>
-inline void Sink::error(const T &exc)
-{
-    try {
-        throw exc;
-    } catch (...) {
-        error();
-    }
+template <typename T> inline void Sink::error(const T &exc) {
+    error_impl(std::make_exception_ptr(exc));
 }
 
 inline void Sink::listing(const Listing &list) { listing_impl(list); }
