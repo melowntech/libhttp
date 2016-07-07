@@ -12,15 +12,40 @@ namespace http {
 
 class Http {
 public:
+    /** Simple server-side interface: listen at given endpoint and start
+     *  machinery right away.
+     *
+     *  NB: contentGenerator must survive this object
+     */
     Http(const utility::TcpEndpoint &listen
          , unsigned int threadCount
          , ContentGenerator &contentGenerator);
 
-    /** Debug version: uses internal dummy content generator that returns 404 on
-     *  every request.
+    /** Create HTTP machiner and do nothing.
      */
-    Http(const utility::TcpEndpoint &listen
-         , unsigned int threadCount);
+    Http();
+
+    /** Listen at given endpoint and as content generator to generate replies to
+     *  received requests.
+     */
+    void listen(const utility::TcpEndpoint &listen
+                , const ContentGenerator::pointer &contentGenerator);
+
+    /** Listen at given endpoint and as content generator to generate replies to
+     *  received requests.
+     *
+     *  NB: contentGenerator must survive this object
+     */
+    void listen(const utility::TcpEndpoint &listen
+                , ContentGenerator &contentGenerator);
+
+    /** Start processing machinery.
+     */
+    void start(unsigned int threadCount);
+
+    /** Stop processing machinery.
+     */
+    void stop();
 
     struct Detail;
 

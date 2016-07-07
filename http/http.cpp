@@ -150,6 +150,29 @@ struct Response {
     int numericCode() const { return static_cast<int>(code); }
 };
 
+class Acceptor {
+public:
+    typedef std::shared_ptr<Acceptor> pointer;
+    typedef std::vector<pointer> list;
+
+    Acceptor(Http::Detail &owner, asio::io_service &ios
+             , const utility::TcpEndpoint &listen
+             , const ContentGenerator::pointer &contentGenerator)
+        : owner_(owner), ios_(ios), acceptor_(ios_, listen.value, true)
+        , contentGenerator_(contentGenerator)
+    {
+        start();
+    }
+
+    void start();
+
+private:
+    Http::Detail &owner_;
+    asio::io_service &ios_;
+    ip::tcp::acceptor acceptor_;
+    ContentGenerator::pointer contentGenerator_;
+};
+
 class Connection
     : boost::noncopyable
     , public std::enable_shared_from_this<Connection>
@@ -158,12 +181,14 @@ public:
     typedef std::shared_ptr<Connection> pointer;
     typedef std::set<pointer> set;
 
-    Connection(Http::Detail &owner, asio::io_service &ios)
+    Connection(Http::Detail &owner, asio::io_service &ios
+               , const ContentGenerator::pointer &contentGenerator)
         : id_(++idGenerator_)
         , lm_(dbglog::make_module(str(boost::format("conn:%s") % id_)))
         , owner_(owner), ios_(ios), strand_(ios), socket_(ios_)
         , requestData_(1024) // max line size
         , state_(State::ready)
+        , contentGenerator_(contentGenerator)
     {}
 
     ip::tcp::socket& socket() {return  socket_; }
@@ -192,6 +217,8 @@ public:
     bool finished() const;
 
     void setAborter(const Sink::AbortedCallback &ac);
+
+    ContentGenerator::pointer contentGenerator() { return contentGenerator_; }
 
 private:
     void startRequest();
@@ -232,28 +259,16 @@ private:
 
     std::mutex acMutex_;
     Sink::AbortedCallback ac_;
+    ContentGenerator::pointer contentGenerator_;
 };
 
 std::atomic<std::size_t> Connection::idGenerator_(0);
-
-class DummyContentGenerator : public ContentGenerator {
-public:
-    DummyContentGenerator() {}
-private:
-    virtual void generate_impl(const std::string&
-                               , const Sink::pointer &sink)
-    {
-        sink->error(NotFound("not found"));
-    }
-};
 
 } // namespace
 
 class Http::Detail : boost::noncopyable {
 public:
-    Detail(const utility::TcpEndpoint &listen, unsigned int threadCount
-           , ContentGenerator &contentGenerator);
-    Detail(const utility::TcpEndpoint &listen, unsigned int threadCount);
+    Detail();
 
     ~Detail() { stop(); }
 
@@ -263,48 +278,36 @@ public:
     void addConnection(const Connection::pointer &conn);
     void removeConnection(const Connection::pointer &conn);
 
-private:
     void start(std::size_t count);
     void stop();
+    void listen(const utility::TcpEndpoint &listen
+                , const ContentGenerator::pointer &contentGenerator);
+
+private:
     void worker(std::size_t id);
-
-    void startAccept();
-
-    std::unique_ptr<DummyContentGenerator> dummyGenerator_;
-    ContentGenerator &contentGenerator_;
 
     asio::io_service ios_;
     boost::optional<asio::io_service::work> work_;
-    ip::tcp::acceptor acceptor_;
     std::vector<std::thread> workers_;
 
+    Acceptor::list acceptors_;
     Connection::set connections_;
     std::mutex connMutex_;
     std::condition_variable connCond_;
+    std::atomic<bool> running_;
 };
 
-Http::Detail::Detail(const utility::TcpEndpoint &listen
-                     , unsigned int threadCount
-                     , ContentGenerator &contentGenerator)
-    : contentGenerator_(contentGenerator)
-    , work_(std::ref(ios_))
-    , acceptor_(ios_, listen.value, true)
-{
-    start(threadCount);
-}
-
-Http::Detail::Detail(const utility::TcpEndpoint &listen
-                     , unsigned int threadCount)
-    : dummyGenerator_(new DummyContentGenerator())
-    , contentGenerator_(*dummyGenerator_)
-    , work_(std::ref(ios_))
-    , acceptor_(ios_, listen.value, true)
-{
-    start(threadCount);
-}
+Http::Detail::Detail()
+    : work_(std::ref(ios_))
+    , running_(false)
+{}
 
 void Http::Detail::start(std::size_t count)
 {
+    if (running_) {
+        LOGTHROW(err3, Error) << "HTTP machinery is already running.";
+    }
+
     // make sure threads are released when something goes wrong
     struct Guard {
         Guard(const std::function<void()> &func) : func(func) {}
@@ -318,17 +321,18 @@ void Http::Detail::start(std::size_t count)
     }
 
     guard.release();
-
-    startAccept();
+    running_ = true;
 }
 
 void Http::Detail::stop()
 {
     LOG(info2) << "Stopping HTTP.";
-    acceptor_.close();
-
     {
         std::unique_lock<std::mutex> lock(connMutex_);
+
+        // get rid of all acceptors
+        acceptors_.clear();
+
         for (const auto &item : connections_) {
             item->close();
         }
@@ -344,6 +348,17 @@ void Http::Detail::stop()
         workers_.back().join();
         workers_.pop_back();
     }
+
+    running_ = false;
+}
+
+void Http::Detail::listen(const utility::TcpEndpoint &listen
+                          , const ContentGenerator::pointer &contentGenerator)
+{
+    std::unique_lock<std::mutex> lock(connMutex_);
+
+    acceptors_.push_back(std::make_shared<Acceptor>
+                         (*this, ios_, listen, contentGenerator));
 }
 
 void Http::Detail::worker(std::size_t id)
@@ -381,15 +396,15 @@ void Http::Detail::removeConnection(const Connection::pointer &conn)
 
 void addRemove(const Connection::pointer &conn);
 
-void Http::Detail::startAccept()
+void Acceptor::start()
 {
-    auto conn(std::make_shared<Connection>(*this, ios_));
+    auto conn(std::make_shared<Connection>(owner_, ios_, contentGenerator_));
 
     acceptor_.async_accept(conn->socket()
                            , [=](const boost::system::error_code &ec)
     {
         if (!ec) {
-            addConnection(conn);
+            owner_.addConnection(conn);
             conn->start();
         } else if (ec == asio::error::operation_aborted) {
             // aborted -> closing shop
@@ -398,7 +413,7 @@ void Http::Detail::startAccept()
             LOG(err2) << "error accepting: " << ec;
         }
 
-        startAccept();
+        start();
     });
 }
 
@@ -1065,7 +1080,7 @@ void Http::Detail::request(const Connection::pointer &connection
     auto sink(std::make_shared<HttpSink>(request, connection));
     try {
         if ((request.method == "HEAD") || (request.method == "GET")) {
-            contentGenerator_.generate(request.uri, sink);
+            connection->contentGenerator()->generate(request.uri, sink);
         } else {
             sink->error(utility::makeError<NotAllowed>
                         ("Method %s is not supported.", request.method));
@@ -1077,13 +1092,38 @@ void Http::Detail::request(const Connection::pointer &connection
 
 Http::Http(const utility::TcpEndpoint &listen, unsigned int threadCount
            , ContentGenerator &contentGenerator)
-    : detail_(std::make_shared<Detail>(listen, threadCount, contentGenerator))
+    : detail_(std::make_shared<Detail>())
+{
+    this->listen(listen, contentGenerator);
+    detail().start(threadCount);
+}
+
+Http::Http()
+    : detail_(std::make_shared<Detail>())
 {
 }
 
-Http::Http(const utility::TcpEndpoint &listen, unsigned int threadCount)
-    : detail_(std::make_shared<Detail>(listen, threadCount))
+void Http::listen(const utility::TcpEndpoint &listen
+                  , const ContentGenerator::pointer &contentGenerator)
 {
+    detail().listen(listen, contentGenerator);
+}
+
+void Http::listen(const utility::TcpEndpoint &listen
+                  , ContentGenerator &contentGenerator)
+{
+    detail().listen(listen, ContentGenerator::pointer
+                    (&contentGenerator, [](void*){}));
+}
+
+void Http::start(unsigned int threadCount)
+{
+    detail().start(threadCount);
+}
+
+void Http::stop()
+{
+    detail().stop();
 }
 
 } // namespace http

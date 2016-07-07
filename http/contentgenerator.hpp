@@ -137,6 +137,8 @@ private:
 
 class ContentGenerator {
 public:
+    typedef std::shared_ptr<ContentGenerator> pointer;
+
     virtual ~ContentGenerator() {}
     void generate(const std::string &location
                   , const Sink::pointer &sink);
