@@ -6,6 +6,12 @@ define_module(LIBRARY http
 set(http_SOURCES
   http.hpp http.cpp
   contentgenerator.hpp contentgenerator.cpp
+  contentfetcher.hpp
+
+  detail/detail.hpp
+  detail/acceptor.hpp
+  detail/serverconnection.hpp
+  detail/types.hpp
 )
 
 add_library(http STATIC ${http_SOURCES})

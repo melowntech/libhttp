@@ -16,42 +16,18 @@
 #include "utility/raise.hpp"
 #include "utility/gccversion.hpp"
 #include "utility/streams.hpp"
-#include "utility/enum-io.hpp"
 #include "utility/buildsys.hpp"
 
 #include "./error.hpp"
 #include "./http.hpp"
+#include "./detail/detail.hpp"
+#include "./detail/types.hpp"
+#include "./detail/serverconnection.hpp"
+#include "./detail/acceptor.hpp"
 
 namespace http {
 
-namespace asio = boost::asio;
-namespace ip = asio::ip;
-namespace ubs = utility::buildsys;
-
 namespace {
-
-enum class StatusCode : int {
-    OK = 200
-
-    , Found = 302
-
-    , BadRequest = 400
-    , NotFound = 404
-    , NotAllowed = 405
-
-    , InternalServerError = 500
-    , ServiceUnavailable = 503
-};
-
-UTILITY_GENERATE_ENUM_IO(StatusCode,
-    ((OK)("OK"))
-    ((Found)("Found" ))
-    ((BadRequest)("Bad Request"))
-    ((NotFound)("Not Found"))
-    ((NotAllowed)("Not Allowed"))
-    ((InternalServerError)("Internal Server Error"))
-    ((ServiceUnavailable)("Service Unavailabe"))
-)
 
 const std::string error400(R"RAW(<html>
 <head><title>400 Bad Request</title></head>
@@ -97,208 +73,18 @@ std::string formatHttpDate(time_t time)
     return buf;
 }
 
-class Connection;
-
-struct Header {
-    std::string name;
-    std::string value;
-
-    typedef std::vector<Header> list;
-
-    Header() {}
-    Header(const std::string &name, const std::string &value)
-        : name(name), value(value) {}
-};
-
-struct Request {
-    std::string method;
-    std::string uri;
-    std::string version;
-    Header::list headers;
-    std::size_t lines;
-
-    enum class State { reading, ready, broken };
-    State state;
-
-    typedef std::vector<Request> list;
-
-    Request() { clear(); }
-
-    void makeReady() { state = State::ready; }
-    void makeBroken() { state = State::broken; }
-
-    void clear() {
-        method.clear();
-        uri.clear();
-        version = "HTTP/1.1";
-        headers.clear();
-        lines = 0;
-        state = State::reading;
-    }
-};
-
-struct Response {
-    StatusCode code;
-    Header::list headers;
-    std::string reason;
-    bool close;
-
-    Response(StatusCode code = StatusCode::OK)
-        : code(code), close(false)
-    {}
-
-    int numericCode() const { return static_cast<int>(code); }
-};
-
-class Acceptor {
-public:
-    typedef std::shared_ptr<Acceptor> pointer;
-    typedef std::vector<pointer> list;
-
-    Acceptor(Http::Detail &owner, asio::io_service &ios
-             , const utility::TcpEndpoint &listen
-             , const ContentGenerator::pointer &contentGenerator)
-        : owner_(owner), ios_(ios), acceptor_(ios_, listen.value, true)
-        , contentGenerator_(contentGenerator)
-    {
-        start();
-    }
-
-    void start();
-
-private:
-    Http::Detail &owner_;
-    asio::io_service &ios_;
-    ip::tcp::acceptor acceptor_;
-    ContentGenerator::pointer contentGenerator_;
-};
-
-class Connection
-    : boost::noncopyable
-    , public std::enable_shared_from_this<Connection>
-{
-public:
-    typedef std::shared_ptr<Connection> pointer;
-    typedef std::set<pointer> set;
-
-    Connection(Http::Detail &owner, asio::io_service &ios
-               , const ContentGenerator::pointer &contentGenerator)
-        : id_(++idGenerator_)
-        , lm_(dbglog::make_module(str(boost::format("conn:%s") % id_)))
-        , owner_(owner), ios_(ios), strand_(ios), socket_(ios_)
-        , requestData_(1024) // max line size
-        , state_(State::ready)
-        , contentGenerator_(contentGenerator)
-    {}
-
-    ip::tcp::socket& socket() {return  socket_; }
-
-    void sendResponse(const Request &request, const Response &response
-                      , const std::string &data, bool persistent = false)
-    {
-        sendResponse(request, response, data.data(), data.size(), persistent);
-    }
-
-    void sendResponse(const Request &request, const Response &response
-                      , const void *data = nullptr, const size_t size = 0
-                      , bool persistent = false);
-
-    void sendResponse(const Request &request, const Response &response
-                      , const Sink::DataSource::pointer &source);
-
-    void start();
-
-    bool valid() const;
-
-    void close();
-
-    dbglog::module& lm() { return lm_; }
-
-    bool finished() const;
-
-    void setAborter(const Sink::AbortedCallback &ac);
-
-    ContentGenerator::pointer contentGenerator() { return contentGenerator_; }
-
-private:
-    void startRequest();
-    void readRequest();
-    void readHeader();
-
-    Request pop() {
-        auto r(requests_.front());
-        requests_.erase(requests_.begin());
-        return r;
-    }
-
-    void process();
-    void badRequest();
-    void close(const boost::system::error_code &ec);
-
-    void makeReady();
-
-    void aborted();
-
-    static std::atomic<std::size_t> idGenerator_;
-
-    std::atomic<std::size_t> id_;
-    dbglog::module lm_;
-
-    Http::Detail &owner_;
-
-    asio::io_service &ios_;
-    asio::strand strand_;
-    ip::tcp::socket socket_;
-    asio::streambuf requestData_;
-    asio::streambuf responseData_;
-
-    Request::list requests_;
-
-    enum class State { ready, busy, busyClose, closed };
-    State state_;
-
-    std::mutex acMutex_;
-    Sink::AbortedCallback ac_;
-    ContentGenerator::pointer contentGenerator_;
-};
-
-std::atomic<std::size_t> Connection::idGenerator_(0);
-
 } // namespace
 
-class Http::Detail : boost::noncopyable {
-public:
-    Detail();
+namespace detail {
 
-    ~Detail() { stop(); }
+std::atomic<std::size_t> ServerConnection::idGenerator_(0);
 
-    void request(const Connection::pointer &connection
-                 , const Request &request);
+} // namespace detail
 
-    void addConnection(const Connection::pointer &conn);
-    void removeConnection(const Connection::pointer &conn);
-
-    void start(std::size_t count);
-    void stop();
-    void listen(const utility::TcpEndpoint &listen
-                , const ContentGenerator::pointer &contentGenerator);
-
-private:
-    void worker(std::size_t id);
-
-    asio::io_service ios_;
-    boost::optional<asio::io_service::work> work_;
-    std::vector<std::thread> workers_;
-
-    Acceptor::list acceptors_;
-    Connection::set connections_;
-    std::mutex connMutex_;
-    std::condition_variable connCond_;
-    std::atomic<bool> running_;
-};
 
 Http::Detail::Detail()
     : work_(std::ref(ios_))
+    , resolver_(ios_)
     , running_(false)
 {}
 
@@ -357,7 +143,7 @@ void Http::Detail::listen(const utility::TcpEndpoint &listen
 {
     std::unique_lock<std::mutex> lock(connMutex_);
 
-    acceptors_.push_back(std::make_shared<Acceptor>
+    acceptors_.push_back(std::make_shared<detail::Acceptor>
                          (*this, ios_, listen, contentGenerator));
 }
 
@@ -379,13 +165,15 @@ void Http::Detail::worker(std::size_t id)
     }
 }
 
-void Http::Detail::addConnection(const Connection::pointer &conn)
+void Http::Detail
+::addServerConnection(const detail::ServerConnection::pointer &conn)
 {
     std::unique_lock<std::mutex> lock(connMutex_);
     connections_.insert(conn);
 }
 
-void Http::Detail::removeConnection(const Connection::pointer &conn)
+void Http::Detail
+::removeServerConnection(const detail::ServerConnection::pointer &conn)
 {
     {
         std::unique_lock<std::mutex> lock(connMutex_);
@@ -394,17 +182,18 @@ void Http::Detail::removeConnection(const Connection::pointer &conn)
     connCond_.notify_one();
 }
 
-void addRemove(const Connection::pointer &conn);
+namespace detail {
 
 void Acceptor::start()
 {
-    auto conn(std::make_shared<Connection>(owner_, ios_, contentGenerator_));
+    auto conn(std::make_shared<ServerConnection>
+              (owner_, ios_, contentGenerator_));
 
     acceptor_.async_accept(conn->socket()
-                           , [=](const boost::system::error_code &ec)
+                           , [=](const bs::error_code &ec)
     {
         if (!ec) {
-            owner_.addConnection(conn);
+            owner_.addServerConnection(conn);
             conn->start();
         } else if (ec == asio::error::operation_aborted) {
             // aborted -> closing shop
@@ -418,7 +207,7 @@ void Acceptor::start()
 }
 
 void prelogAndProcess(Http::Detail &detail
-                      , const Connection::pointer &connection
+                      , const ServerConnection::pointer &connection
                       , const Request &request)
 {
     LOG(info2, connection->lm())
@@ -427,7 +216,7 @@ void prelogAndProcess(Http::Detail &detail
     detail.request(connection, request);
 }
 
-void postLog(const Connection::pointer &connection
+void postLog(const ServerConnection::pointer &connection
              , const Request &request, const Response &response
              , std::size_t size)
 {
@@ -445,16 +234,16 @@ void postLog(const Connection::pointer &connection
         << ' ' << size << " [" << response.reason << "].";
 }
 
-void Connection::setAborter(const Sink::AbortedCallback &ac)
+void ServerConnection::setAborter(const ServerSink::AbortedCallback &ac)
 {
     std::unique_lock<std::mutex> lock(acMutex_);
     ac_ = ac;
 }
 
-void Connection::aborted()
+void ServerConnection::aborted()
 {
     // grab current value of callback
-    auto ac([&]() -> Sink::AbortedCallback
+    auto ac([&]() -> ServerSink::AbortedCallback
     {
         std::unique_lock<std::mutex> lock(acMutex_);
         return ac_;
@@ -464,7 +253,7 @@ void Connection::aborted()
     if (ac) { ac(); }
 }
 
-bool Connection::finished() const
+bool ServerConnection::finished() const
 {
     switch (state_) {
     case State::ready: case State::busy: return false;
@@ -473,7 +262,7 @@ bool Connection::finished() const
     return false;
 }
 
-void Connection::process()
+void ServerConnection::process()
 {
     switch (state_) {
     case State::busy:
@@ -506,7 +295,7 @@ void Connection::process()
     }
 }
 
-void Connection::makeReady()
+void ServerConnection::makeReady()
 {
     switch (state_) {
     case State::busy:
@@ -523,35 +312,35 @@ void Connection::makeReady()
     }
 }
 
-void Connection::close(const boost::system::error_code &ec)
+void ServerConnection::close(const bs::error_code &ec)
 {
     if ((ec == asio::error::misc_errors::eof)
         || (ec == asio::error::operation_aborted)
         || (ec == asio::error::connection_reset))
     {
-        LOG(info1, lm_) << "Connection closed.";
+        LOG(info1, lm_) << "ServerConnection closed.";
     } else {
         LOG(err2, lm_) << "Error: " << ec;
-        boost::system::error_code cec;
+        bs::error_code cec;
         socket_.close(cec);
     }
 
     // aborted
     state_ = State::closed;
     aborted();
-    owner_.removeConnection(shared_from_this());
+    owner_.removeServerConnection(shared_from_this());
 }
 
-void Connection::close()
+void ServerConnection::close()
 {
     if (state_ != State::closed) {
-        LOG(info2, lm_) << "Connection closed.";
-        boost::system::error_code cec;
+        LOG(info2, lm_) << "ServerConnection closed.";
+        bs::error_code cec;
         socket_.close(cec);
     }
 }
 
-bool Connection::valid() const
+bool ServerConnection::valid() const
 {
     switch (state_) {
     case State::closed:
@@ -563,18 +352,18 @@ bool Connection::valid() const
     return true;
 }
 
-void Connection::start()
+void ServerConnection::start()
 {
-    LOG(info1, lm_) << "Connection opened.";
+    LOG(info1, lm_) << "ServerConnection opened.";
     requests_.emplace_back();
     readRequest();
 }
 
-void Connection::readRequest()
+void ServerConnection::readRequest()
 {
     auto self(shared_from_this());
 
-    auto parseRequest([self, this](const boost::system::error_code &ec
+    auto parseRequest([self, this](const bs::error_code &ec
                                    , std::size_t bytes)
     {
         auto &request(requests_.back());
@@ -613,11 +402,11 @@ void Connection::readRequest()
                            , strand_.wrap(parseRequest));
 }
 
-void Connection::readHeader()
+void ServerConnection::readHeader()
 {
     auto self(shared_from_this());
 
-    auto parseHeader([self, this](const boost::system::error_code &ec
+    auto parseHeader([self, this](const bs::error_code &ec
                                   , std::size_t bytes)
     {
         auto &request(requests_.back());
@@ -686,7 +475,7 @@ void Connection::readHeader()
                            , strand_.wrap(parseHeader));
 }
 
-void Connection::badRequest()
+void ServerConnection::badRequest()
 {
     Response response(StatusCode::BadRequest);
     response.close = true;
@@ -699,7 +488,7 @@ void Connection::badRequest()
     sendResponse({}, response, error400, true);
 }
 
-void Connection::sendResponse(const Request &request, const Response &response
+void ServerConnection::sendResponse(const Request &request, const Response &response
                               , const void *data, const size_t size
                               , bool persistent)
 {
@@ -720,7 +509,7 @@ void Connection::sendResponse(const Request &request, const Response &response
     } else {
         os << "Content-Length: 0\r\n";
     }
-    if (response.close) { os << "Connection: close\r\n"; }
+    if (response.close) { os << "ServerConnection: close\r\n"; }
 
     os << "\r\n";
 
@@ -740,7 +529,7 @@ void Connection::sendResponse(const Request &request, const Response &response
 
     auto self(shared_from_this());
     auto responseSent([self, this, request, response]
-                      (const boost::system::error_code &ec, std::size_t bytes)
+                      (const bs::error_code &ec, std::size_t bytes)
     {
         if (ec) {
             close(ec);
@@ -774,8 +563,9 @@ void Connection::sendResponse(const Request &request, const Response &response
     }
 }
 
-void Connection::sendResponse(const Request &request, const Response &response
-                              , const Sink::DataSource::pointer &source)
+void ServerConnection
+::sendResponse(const Request &request, const Response &response
+               , const SinkBase::DataSource::pointer &source)
 {
     std::ostream os(&responseData_);
 
@@ -796,7 +586,7 @@ void Connection::sendResponse(const Request &request, const Response &response
     // optional data
     auto dataSize(source->size());
     os << "Content-Length: " << dataSize << "\r\n";
-    if (response.close) { os << "Connection: close\r\n"; }
+    if (response.close) { os << "ServerConnection: close\r\n"; }
 
     os << "\r\n";
 
@@ -810,7 +600,7 @@ void Connection::sendResponse(const Request &request, const Response &response
         // just send headers
         auto self(shared_from_this());
         auto headersSent([self, this, request, response]
-                         (const boost::system::error_code &ec
+                         (const bs::error_code &ec
                           , std::size_t bytes)
         {
             if (ec) {
@@ -837,9 +627,9 @@ void Connection::sendResponse(const Request &request, const Response &response
     }
 
     struct Sender : std::enable_shared_from_this<Sender> {
-        Sender(const Connection::pointer &conn
+        Sender(const ServerConnection::pointer &conn
                , const Request &request, const Response &response
-               , const Sink::DataSource::pointer &source
+               , const SinkBase::DataSource::pointer &source
                , std::size_t size)
             : conn(conn), request(request), response(response)
             , source(source), total(), bytesLeft(size), off()
@@ -851,14 +641,14 @@ void Connection::sendResponse(const Request &request, const Response &response
             asio::async_write
                 (conn->socket_, conn->responseData_.data()
                  , conn->strand_.wrap
-                 ([self, this](const boost::system::error_code &ec
+                 ([self, this](const bs::error_code &ec
                                , std::size_t bytes)
             {
                 headersSent(ec, bytes);
             }));
         }
 
-        void headersSent(const boost::system::error_code &ec
+        void headersSent(const bs::error_code &ec
                          , std::size_t bytes)
         {
             if (ec) {
@@ -894,7 +684,7 @@ void Connection::sendResponse(const Request &request, const Response &response
                 asio::async_write
                     (conn->socket_, asio::buffer(buf.data(), s)
                      , conn->strand_.wrap
-                     ([self, this](const boost::system::error_code &ec
+                     ([self, this](const bs::error_code &ec
                                    , std::size_t bytes)
                 {
                     bodySent(ec, bytes);
@@ -905,7 +695,7 @@ void Connection::sendResponse(const Request &request, const Response &response
             done();
         }
 
-        void bodySent(const boost::system::error_code &ec, std::size_t bytes)
+        void bodySent(const bs::error_code &ec, std::size_t bytes)
         {
             if (ec) {
                 conn->close(ec);
@@ -927,10 +717,10 @@ void Connection::sendResponse(const Request &request, const Response &response
             conn->process();
         }
 
-        Connection::pointer conn;
+        ServerConnection::pointer conn;
         Request request;
         Response response;
-        Sink::DataSource::pointer source;
+        SinkBase::DataSource::pointer source;
 
         std::size_t total;
         std::size_t bytesLeft;
@@ -943,11 +733,10 @@ void Connection::sendResponse(const Request &request, const Response &response
                              , source, dataSize)->start();
 }
 
-namespace {
-
-class HttpSink : public Sink {
+class HttpSink : public ServerSink {
 public:
-    HttpSink(const Request &request, const Connection::pointer &connection)
+    HttpSink(const Request &request
+             , const ServerConnection::pointer &connection)
         : request_(request), connection_(connection)
     {}
     ~HttpSink() {}
@@ -966,7 +755,7 @@ private:
         connection_->sendResponse(request_, response, data, size, !needCopy);
     }
 
-    virtual void content_impl(const Sink::DataSource::pointer &source)
+    virtual void content_impl(const SinkBase::DataSource::pointer &source)
     {
         if (!valid()) { return; }
 
@@ -1069,15 +858,15 @@ private:
     }
 
     Request request_;
-    Connection::pointer connection_;
+    ServerConnection::pointer connection_;
 };
 
-} // namespace
+} // namespace detail
 
-void Http::Detail::request(const Connection::pointer &connection
-                           , const Request &request)
+void Http::Detail::request(const detail::ServerConnection::pointer &connection
+                           , const detail::Request &request)
 {
-    auto sink(std::make_shared<HttpSink>(request, connection));
+    auto sink(std::make_shared<detail::HttpSink>(request, connection));
     try {
         if ((request.method == "HEAD") || (request.method == "GET")) {
             connection->contentGenerator()->generate(request.uri, sink);
@@ -1124,6 +913,36 @@ void Http::start(unsigned int threadCount)
 void Http::stop()
 {
     detail().stop();
+}
+
+void Http::Detail::fetch(const utility::Uri &location
+                         , const ClientSink::pointer &sink)
+{
+    LOG(info4) << "About to fetch <" << join(location) << ">";
+
+    // resolve hostname
+    resolver_.async_resolve(tcp::resolver::query
+                            (location.host, location.schema)
+                            , [this, location, sink](const bs::error_code &ec
+                             , tcp::resolver::iterator i)
+    {
+        if (ec) {
+            sink->error(bs::system_error(ec, "DNS resolution failed"));
+            return;
+        }
+
+        for (tcp::resolver::iterator e; i != e; ++i) {
+            LOG(info4) << "Resolved <" << i->host_name() << ">: <"
+                       << i->endpoint().address().to_string() << ":"
+                       << i->endpoint().port() << ">.";
+        }
+    });
+}
+
+void Http::fetch_impl(const utility::Uri &location
+                      , const ClientSink::pointer &sink)
+{
+    detail().fetch(location, sink);
 }
 
 } // namespace http

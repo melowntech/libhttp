@@ -7,10 +7,11 @@
 #include "utility/tcpendpoint.hpp"
 
 #include "contentgenerator.hpp"
+#include "contentfetcher.hpp"
 
 namespace http {
 
-class Http {
+class Http : public ContentFetcher {
 public:
     /** Simple server-side interface: listen at given endpoint and start
      *  machinery right away.
@@ -50,6 +51,9 @@ public:
     struct Detail;
 
 private:
+    void fetch_impl(const utility::Uri &location
+                    , const ClientSink::pointer &sink);
+
     std::shared_ptr<Detail> detail_;
     Detail& detail() { return *detail_; }
     const Detail& detail() const { return *detail_; }

@@ -1,14 +1,14 @@
-#include "./contentgenerator.hpp"
+#include "./sink.hpp"
 #include "./error.hpp"
 
 namespace http {
 
-void Sink::error()
+void SinkBase::error()
 {
     error_impl(std::current_exception());
 }
 
-void Sink::checkAborted() const
+void ServerSink::checkAborted() const
 {
     if (checkAborted_impl()) {
         throw RequestAborted("Request aborted.");
