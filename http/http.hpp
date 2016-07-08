@@ -11,7 +11,7 @@
 
 namespace http {
 
-class Http : public ContentFetcher {
+class Http {
 public:
     /** Simple server-side interface: listen at given endpoint and start
      *  machinery right away.
@@ -40,20 +40,25 @@ public:
     void listen(const utility::TcpEndpoint &listen
                 , ContentGenerator &contentGenerator);
 
-    /** Start processing machinery.
+    /** Start server-side processing machinery.
      */
-    void start(unsigned int threadCount);
+    void startServer(unsigned int threadCount);
+
+    /** Start client-side processing machinery.
+     */
+    void startClient(unsigned int threadCount);
 
     /** Stop processing machinery.
      */
     void stop();
 
+    /** Returns content fetcher interface.
+     */
+    ContentFetcher& fetcher();
+
     struct Detail;
 
 private:
-    void fetch_impl(const utility::Uri &location
-                    , const ClientSink::pointer &sink);
-
     std::shared_ptr<Detail> detail_;
     Detail& detail() { return *detail_; }
     const Detail& detail() const { return *detail_; }

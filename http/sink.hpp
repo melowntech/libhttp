@@ -79,11 +79,6 @@ public:
     void content(const void *data, std::size_t size
                  , const FileInfo &stat, bool needCopy);
 
-    /** Sends content to client.
-     * \param stream stream to send
-     */
-    void content(const DataSource::pointer &source);
-
     /** Sends current exception to the client.
      */
     void error();
@@ -92,6 +87,10 @@ public:
      */
     void error(const std::exception_ptr &exc);
 
+    /** Tell client to look somewhere else.
+     */
+    void seeOther(const std::string &url);
+
     /** Sends given error to the client.
      */
     template <typename T> void error(const T &exc);
@@ -99,8 +98,8 @@ public:
 private:
     virtual void content_impl(const void *data, std::size_t size
                               , const FileInfo &stat, bool needCopy) = 0;
-    virtual void content_impl(const DataSource::pointer &source) = 0;
     virtual void error_impl(const std::exception_ptr &exc) = 0;
+    virtual void seeOther_impl(const std::string &url) = 0;
 };
 
 /** Sink for sending/receiving data to/from the client.
@@ -127,10 +126,6 @@ public:
 
     ServerSink() {}
 
-    /** Tell client to look somewhere else.
-     */
-    void seeOther(const std::string &url);
-
     /** Generates listing.
      */
     void listing(const Listing &list);
@@ -144,8 +139,17 @@ public:
      */
     void setAborter(const AbortedCallback &ac);
 
+    /** Pull in base class content(...) functions
+     */
+    using SinkBase::content;
+
+    /** Sends content to client.
+     * \param stream stream to send
+     */
+    void content(const DataSource::pointer &source);
+
 private:
-    virtual void seeOther_impl(const std::string &url) = 0;
+    virtual void content_impl(const DataSource::pointer &source) = 0;
     virtual void listing_impl(const Listing &list) = 0;
     virtual bool checkAborted_impl() const = 0;
     virtual void setAborter_impl(const AbortedCallback &ac) = 0;
@@ -177,12 +181,12 @@ inline void SinkBase::content(const std::vector<T> &data, const FileInfo &stat)
     content_impl(data.data(), data.size() * sizeof(T), stat, true);
 }
 
-inline void SinkBase::content(const DataSource::pointer &source)
+inline void ServerSink::content(const DataSource::pointer &source)
 {
     content_impl(source);
 }
 
-inline void ServerSink::seeOther(const std::string &url)
+inline void SinkBase::seeOther(const std::string &url)
 {
     seeOther_impl(url);
 }

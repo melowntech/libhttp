@@ -2,16 +2,22 @@
 #define http_detail_detail_hpp_included_
 
 #include <memory>
+#include <set>
 #include <string>
 #include <atomic>
 #include <thread>
 
 #include <boost/noncopyable.hpp>
 #include <boost/asio.hpp>
+#include <boost/optional.hpp>
 
 #include "utility/uri.hpp"
+#include "utility/buildsys.hpp"
 
 #include "../http.hpp"
+#include "../contentfetcher.hpp"
+#include "./dnscache.hpp"
+#include "./curl.hpp"
 
 namespace http {
 
@@ -23,12 +29,14 @@ typedef asio::ip::tcp tcp;
 
 namespace detail {
 class ServerConnection;
-
 class Request;
 class Acceptor;
 } // namespace detail
 
-class Http::Detail : boost::noncopyable {
+class Http::Detail
+    : boost::noncopyable
+    , public ContentFetcher
+{
 public:
     Detail();
 
@@ -42,20 +50,31 @@ public:
     void removeServerConnection
     (const std::shared_ptr<detail::ServerConnection> &conn);
 
-    void start(std::size_t count);
+    /** Starts server threads.
+     */
+    void startServer(std::size_t count);
+
+    /** Starts server threads.
+     */
+    void startClient(std::size_t count);
+
+    /** Strop all threads.
+     */
     void stop();
+
     void listen(const utility::TcpEndpoint &listen
                 , const ContentGenerator::pointer &contentGenerator);
 
-    void fetch(const utility::Uri &location
-               , const ClientSink::pointer &sink);
-
 private:
+    virtual void fetch_impl(const utility::Uri &location
+                            , const ClientSink::pointer &sink
+                            , const RequestOptions &options);
+
     void worker(std::size_t id);
 
     asio::io_service ios_;
     boost::optional<asio::io_service::work> work_;
-    tcp::resolver resolver_;
+    detail::DnsCache dnsCache_;
     std::vector<std::thread> workers_;
 
     std::vector<std::shared_ptr<detail::Acceptor>> acceptors_;
@@ -63,6 +82,14 @@ private:
     std::mutex connMutex_;
     std::condition_variable connCond_;
     std::atomic<bool> running_;
+
+    /** CURL based clients.
+     */
+    detail::CurlClient::list clients_;
+
+    /** Current client. Workload is distributed in round-robin manner.
+     */
+    detail::CurlClient::list::iterator currentClient_;
 };
 
 } // namespace http

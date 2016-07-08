@@ -8,10 +8,12 @@ set(http_SOURCES
   contentgenerator.hpp contentgenerator.cpp
   contentfetcher.hpp
 
+  detail/types.hpp
   detail/detail.hpp
   detail/acceptor.hpp
   detail/serverconnection.hpp
-  detail/types.hpp
+
+  detail/client.cpp
 )
 
 add_library(http STATIC ${http_SOURCES})

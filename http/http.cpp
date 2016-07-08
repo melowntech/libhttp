@@ -16,7 +16,7 @@
 #include "utility/raise.hpp"
 #include "utility/gccversion.hpp"
 #include "utility/streams.hpp"
-#include "utility/buildsys.hpp"
+#include "utility/thread.hpp"
 
 #include "./error.hpp"
 #include "./http.hpp"
@@ -84,14 +84,16 @@ std::atomic<std::size_t> ServerConnection::idGenerator_(0);
 
 Http::Detail::Detail()
     : work_(std::ref(ios_))
-    , resolver_(ios_)
+    , dnsCache_(ios_)
     , running_(false)
+    , currentClient_()
 {}
 
-void Http::Detail::start(std::size_t count)
+void Http::Detail::startServer(std::size_t count)
 {
     if (running_) {
-        LOGTHROW(err3, Error) << "HTTP machinery is already running.";
+        LOGTHROW(err3, Error)
+            << "HTTP server-side machinery is already running.";
     }
 
     // make sure threads are released when something goes wrong
@@ -110,9 +112,25 @@ void Http::Detail::start(std::size_t count)
     running_ = true;
 }
 
+
+void Http::Detail::startClient(std::size_t count)
+{
+    if (!clients_.empty()) {
+        LOGTHROW(err3, Error)
+            << "HTTP client-side machinery is already running.";
+    }
+
+    for (std::size_t id(1); id <= count; ++id) {
+        clients_.push_back(std::make_shared<detail::CurlClient>(id));
+    }
+    currentClient_ = clients_.begin();
+}
+
 void Http::Detail::stop()
 {
     LOG(info2) << "Stopping HTTP.";
+
+    // server side first
     {
         std::unique_lock<std::mutex> lock(connMutex_);
 
@@ -136,6 +154,9 @@ void Http::Detail::stop()
     }
 
     running_ = false;
+
+    // client side second
+    clients_.clear();
 }
 
 void Http::Detail::listen(const utility::TcpEndpoint &listen
@@ -149,17 +170,17 @@ void Http::Detail::listen(const utility::TcpEndpoint &listen
 
 void Http::Detail::worker(std::size_t id)
 {
-    dbglog::thread_id(str(boost::format("http:%u") % id));
-    LOG(info2) << "Spawned HTTP worker id:" << id << ".";
+    dbglog::thread_id(str(boost::format("shttp:%u") % id));
+    LOG(info2) << "Spawned HTTP server worker id:" << id << ".";
 
     for (;;) {
         try {
             ios_.run();
-            LOG(info2) << "Terminated HTTP worker id:" << id << ".";
+            LOG(info2) << "Terminated HTTP server worker id:" << id << ".";
             return;
         } catch (const std::exception &e) {
             LOG(err3)
-                << "Uncaught exception in HTTP worker: <" << e.what()
+                << "Uncaught exception in HTTP server worker: <" << e.what()
                 << ">. Going on.";
         }
     }
@@ -884,7 +905,7 @@ Http::Http(const utility::TcpEndpoint &listen, unsigned int threadCount
     : detail_(std::make_shared<Detail>())
 {
     this->listen(listen, contentGenerator);
-    detail().start(threadCount);
+    detail().startServer(threadCount);
 }
 
 Http::Http()
@@ -905,9 +926,14 @@ void Http::listen(const utility::TcpEndpoint &listen
                     (&contentGenerator, [](void*){}));
 }
 
-void Http::start(unsigned int threadCount)
+void Http::startServer(unsigned int threadCount)
 {
-    detail().start(threadCount);
+    detail().startServer(threadCount);
+}
+
+void Http::startClient(unsigned int threadCount)
+{
+    detail().startClient(threadCount);
 }
 
 void Http::stop()
@@ -915,34 +941,8 @@ void Http::stop()
     detail().stop();
 }
 
-void Http::Detail::fetch(const utility::Uri &location
-                         , const ClientSink::pointer &sink)
-{
-    LOG(info4) << "About to fetch <" << join(location) << ">";
-
-    // resolve hostname
-    resolver_.async_resolve(tcp::resolver::query
-                            (location.host, location.schema)
-                            , [this, location, sink](const bs::error_code &ec
-                             , tcp::resolver::iterator i)
-    {
-        if (ec) {
-            sink->error(bs::system_error(ec, "DNS resolution failed"));
-            return;
-        }
-
-        for (tcp::resolver::iterator e; i != e; ++i) {
-            LOG(info4) << "Resolved <" << i->host_name() << ">: <"
-                       << i->endpoint().address().to_string() << ":"
-                       << i->endpoint().port() << ">.";
-        }
-    });
-}
-
-void Http::fetch_impl(const utility::Uri &location
-                      , const ClientSink::pointer &sink)
-{
-    detail().fetch(location, sink);
+ContentFetcher& Http::fetcher() {
+    return detail();
 }
 
 } // namespace http
