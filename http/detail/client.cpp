@@ -68,10 +68,6 @@ namespace http { namespace detail {
     CHECK_CURLM_STATUS(::curl_multi_setopt(multi_, name, value)    \
                        , "curl_multi_setopt")
 
-// fake user-agent :)
-const char *UserAgent
-    ("Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0");
-
 ClientConnection* connFromEasy(CURL *easy)
 {
     ClientConnection *conn;
@@ -101,6 +97,8 @@ ClientConnection
     : easy_(::curl_easy_init()), owner_(owner)
     , location_(location), url_(join(location_)), sink_(sink)
 {
+    LOG(info2) << "Starting transfer from <" << url_ << ">.";
+
     if (!easy_) {
         LOGTHROW(err2, Error)
             << "Failed to create easy CURL handle.";
@@ -120,14 +118,15 @@ ClientConnection
     SETOPT(CURLOPT_FILETIME, 1L);
     // force HTTP/1.1
     SETOPT(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-    // use some user agent
-    SETOPT(CURLOPT_USERAGENT, UserAgent);
+
+    // use user agent
+    if (!options.userAgent.empty()) {
+        SETOPT(CURLOPT_USERAGENT, options.userAgent.c_str());
+    }
 
     // write op
     SETOPT(CURLOPT_WRITEFUNCTION, &http_clientconnection_write);
     SETOPT(CURLOPT_WRITEDATA, this);
-
-    SETOPT(CURLOPT_USERAGENT, UserAgent);
 
     // follow redirects
     SETOPT(CURLOPT_FOLLOWLOCATION, long(options.followRedirects));
@@ -157,6 +156,8 @@ void ClientConnection::notify(::CURLcode result)
                       , url_, result, ::curl_easy_strerror(result)));
         return;
     }
+
+    LOG(info2) << "Transfer from <" << url_ << "> finished.";
 
     try {
         long int httpCode(500);
@@ -458,8 +459,6 @@ void Http::Detail::fetch_impl(const utility::Uri &location
         LOGTHROW(err2, Error)
             << "Cannot perform fetch request: no client is running.";
     }
-
-    LOG(info2) << "About to fetch <" << join(location) << ">";
 
     (*currentClient_++)->fetch(location, sink, options);
     if (currentClient_ == clients_.end()) {

@@ -23,6 +23,7 @@ public:
         RequestOptions() : followRedirects(true) {}
 
         bool followRedirects;
+        std::string userAgent;
     };
 
     void fetch(const utility::Uri &location
