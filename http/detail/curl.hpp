@@ -19,8 +19,6 @@
 
 #include <curl/curl.h>
 
-#include "utility/uri.hpp"
-
 #include "../sink.hpp"
 #include "../contentfetcher.hpp"
 
@@ -42,7 +40,7 @@ public:
     typedef std::set<ClientConnection*> set;
 
     ClientConnection(CurlClient &owner
-                     , const utility::Uri &location
+                     , const std::string &location
                      , const ClientSink::pointer &sink
                      , const ContentFetcher::RequestOptions &options);
     ~ClientConnection();
@@ -56,30 +54,15 @@ public:
 private:
     ::CURL *easy_;
     CurlClient &owner_;
-    utility::Uri location_;
-    std::string url_;
+    std::string location_;
     ClientSink::pointer sink_;
 
     std::string content_;
 };
 
-struct CurlSocket
-    : public std::enable_shared_from_this<CurlSocket>
-    , boost::noncopyable
-{
-    typedef std::set<CurlSocket*> set;
-
-    CurlSocket(ClientConnection *conn, asio::io_service &ios
-               , curl_socket_t native)
-        : conn(conn), socket(ios)
-    {
-        // TODO: find out protocol
-        socket.assign(tcp::v4(), native);
-    }
-
-    ClientConnection *conn;
-    tcp::socket socket;
-};
+typedef ip::tcp::socket Socket;
+typedef std::shared_ptr<Socket> SocketPointer;
+typedef std::map<curl_socket_t, SocketPointer> SocketMap;
 
 class CurlClient : boost::noncopyable {
 public:
@@ -88,7 +71,7 @@ public:
     CurlClient(int id);
     ~CurlClient();
 
-    void fetch(const utility::Uri &location
+    void fetch(const std::string &location
                , const ClientSink::pointer &sink
                , const ContentFetcher::RequestOptions &options);
 
@@ -100,12 +83,17 @@ public:
 
     int timeout(long int timeout);
 
+    ::curl_socket_t open(::curlsocktype purpose,
+                         ::curl_sockaddr *address);
+
+    int close(::curl_socket_t s);
+
 private:
     void start(unsigned int id);
     void stop();
     void run(unsigned int id);
 
-    void action(CurlSocket *socket = nullptr, int what = 0);
+    void action(Socket *socket = nullptr, int what = 0);
 
     ::CURLM *multi_;
     asio::io_service ios_;
@@ -116,7 +104,7 @@ private:
     struct HandleIdx {};
 
     ClientConnection::set connections_;
-    CurlSocket::set sockets_;
+    SocketMap sockets_;
     int runningTransfers_;
 };
 

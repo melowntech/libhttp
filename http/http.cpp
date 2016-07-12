@@ -130,7 +130,10 @@ void Http::Detail::stop()
 {
     LOG(info2) << "Stopping HTTP.";
 
-    // server side first
+    // client side first (client can handle subrequest received by server)
+    clients_.clear();
+
+    // server side second;
     {
         std::unique_lock<std::mutex> lock(connMutex_);
 
@@ -154,9 +157,6 @@ void Http::Detail::stop()
     }
 
     running_ = false;
-
-    // client side second
-    clients_.clear();
 }
 
 void Http::Detail::listen(const utility::TcpEndpoint &listen

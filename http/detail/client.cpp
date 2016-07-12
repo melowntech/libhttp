@@ -70,9 +70,9 @@ namespace http { namespace detail {
 
 ClientConnection* connFromEasy(CURL *easy)
 {
-    ClientConnection *conn;
-    CHECK_CURL_STATUS(::curl_easy_getinfo(easy, CURLINFO_PRIVATE, &conn)
-                      , "curl_easy_getinfo");
+    ClientConnection *conn(nullptr);
+    LOG_CURL_STATUS(::curl_easy_getinfo(easy, CURLINFO_PRIVATE, &conn)
+                    , "curl_easy_getinfo");
     return conn;
 }
 
@@ -87,17 +87,29 @@ std::size_t http_clientconnection_write(void *ptr, std::size_t size
     return count;
 }
 
+::curl_socket_t http_curlclient_opensocket(void *clientp,
+                                           ::curlsocktype purpose,
+                                           ::curl_sockaddr *address)
+{
+    return static_cast<CurlClient*>(clientp)->open(purpose, address);
+}
+
+int http_curlclient_closesocket(void *clientp, ::curl_socket_t item)
+{
+    return static_cast<CurlClient*>(clientp)->close(item);
+}
+
 } // extern "C"
 
 ClientConnection
 ::ClientConnection(CurlClient &owner
-                   , const utility::Uri &location
+                   , const std::string &location
                    , const ClientSink::pointer &sink
                    , const ContentFetcher::RequestOptions &options)
     : easy_(::curl_easy_init()), owner_(owner)
-    , location_(location), url_(join(location_)), sink_(sink)
+    , location_(location), sink_(sink)
 {
-    LOG(info2) << "Starting transfer from <" << url_ << ">.";
+    LOG(info2) << "Starting transfer from <" << location_ << ">.";
 
     if (!easy_) {
         LOGTHROW(err2, Error)
@@ -106,7 +118,10 @@ ClientConnection
 
     struct Guard {
         ::CURL *easy;
-        ~Guard() { if (easy) { ::curl_easy_cleanup(easy); } }
+        ~Guard() { if (easy) {
+                LOG(warn2) << "Destroying easy handle due to an error.";
+                ::curl_easy_cleanup(easy);
+            } }
     } guard{ easy_ };
 
     // set myself as a private data
@@ -132,7 +147,12 @@ ClientConnection
     SETOPT(CURLOPT_FOLLOWLOCATION, long(options.followRedirects));
 
     // and finally set url
-    SETOPT(CURLOPT_URL, url_.c_str());
+    SETOPT(CURLOPT_URL, location_.c_str());
+
+    SETOPT(CURLOPT_OPENSOCKETFUNCTION, &http_curlclient_opensocket);
+    SETOPT(CURLOPT_OPENSOCKETDATA, &owner);
+    SETOPT(CURLOPT_CLOSESOCKETFUNCTION, &http_curlclient_closesocket);
+    SETOPT(CURLOPT_CLOSESOCKETDATA, &owner);
 
     // add to owner
     owner_.add(*this);
@@ -150,14 +170,14 @@ ClientConnection::~ClientConnection()
 
 void ClientConnection::notify(::CURLcode result)
 {
+    LOG(info2) << "Transfer from <" << location_ << "> finished.";
+
     if (result != CURLE_OK) {
         sink_->error(utility::makeError<Error>
                      ("Transfer of <%s> failed: <%d, %s>."
-                      , url_, result, ::curl_easy_strerror(result)));
+                      , location_, result, ::curl_easy_strerror(result)));
         return;
     }
-
-    LOG(info2) << "Transfer from <" << url_ << "> finished.";
 
     try {
         long int httpCode(500);
@@ -205,6 +225,7 @@ void ClientConnection::notify(::CURLcode result)
                              ("Not Found"));
                 break;
             }
+            break;
 
         default:
             switch (httpCode) {
@@ -261,6 +282,7 @@ CurlClient::CurlClient(int id)
     MSETOPT(CURLMOPT_SOCKETDATA, this);
     MSETOPT(CURLMOPT_TIMERFUNCTION, &http_curlclient_timer);
     MSETOPT(CURLMOPT_TIMERDATA, this);
+
     start(id);
 }
 
@@ -273,10 +295,9 @@ CurlClient::~CurlClient()
     stop();
 
     // destroy sockets and connection
-    for (auto socket : sockets_) { delete socket; }
-    sockets_.clear();
     for (auto conn : connections_) { delete conn; }
     connections_.clear();
+    sockets_.clear();
 
     LOG_CURLM_STATUS(::curl_multi_cleanup(multi_)
                      , "curl_multi_cleanup");
@@ -292,6 +313,7 @@ void CurlClient::stop()
 {
     work_ = boost::none;
     worker_.join();
+    ios_.stop();
 }
 
 void CurlClient::run(unsigned int id)
@@ -328,7 +350,7 @@ void CurlClient::remove(ClientConnection &conn)
                        , "curl_multi_remove_handle");
 }
 
-void CurlClient::fetch(const utility::Uri &location
+void CurlClient::fetch(const std::string &location
                        , const ClientSink::pointer &sink
                        , const ContentFetcher::RequestOptions &options)
 {
@@ -344,55 +366,79 @@ void CurlClient::fetch(const utility::Uri &location
     });
 }
 
-int CurlClient::handle(::CURL *easy, ::curl_socket_t s, int what
+::curl_socket_t CurlClient::open(::curlsocktype purpose,
+                                 ::curl_sockaddr *address)
+{
+    if (purpose == CURLSOCKTYPE_IPCXN && address->family == AF_INET)
+    {
+        // remember socket
+        auto socket(std::make_shared<Socket>(ios_));
+
+        bs::error_code ec;
+        socket->open(ip::tcp::v4(), ec);
+
+        if (ec) {
+            LOG(warn2) << "Failed to open TCP socket: <" << ec << ">.";
+            return CURL_SOCKET_BAD;
+        }
+
+        auto native(socket->native_handle());
+        sockets_.insert(SocketMap::value_type(native, socket));
+        return native;
+    }
+
+    // unsupported
+    return CURL_SOCKET_BAD;
+}
+
+int CurlClient::close(::curl_socket_t s)
+{
+    sockets_.erase(s);
+    return 0;
+}
+
+int CurlClient::handle(::CURL*, ::curl_socket_t s, int what
                        , void *socketp)
 {
     if (what == CURL_POLL_REMOVE) {
-        // remove socket
-        if (socketp) {
-            auto *socket(static_cast<CurlSocket*>(socketp));
-            sockets_.erase(socket);
-            delete socket;
-        }
+        // nothing to do
         return 0;
     }
 
-    CurlSocket *socket;
+    Socket *socket;
     if (!socketp) {
-        // no socket info, find and assign
-        auto *conn(connFromEasy(easy));
-        if (!conn) {
-            // OOPS! not found! wtf?
-            return 1;
+        // find
+        auto fsockets(sockets_.find(s));
+        if (fsockets == sockets_.end()) {
+            // OOPS, not found
+            LOG(warn2) << "Unknown socket " << s << " in handle callback.";
+            return -1;
         }
 
-        std::unique_ptr<CurlSocket> sock
-            (socket = new CurlSocket(conn, ios_, s));
+        // assign
+        socket = fsockets->second.get();
 
         // assign connection to socket
         CHECK_CURLM_STATUS
             (::curl_multi_assign(multi_, s, socket)
             , "curl_multi_assign");
-
-        // own the pointer
-        sockets_.insert(sock.release());
     } else {
-        socket = static_cast<CurlSocket*>(socketp);
+        socket = static_cast<Socket*>(socketp);
     }
 
     if (what & CURL_POLL_IN) {
-        socket->socket.async_read_some(asio::null_buffers()
-                                       , [=] (const bs::error_code &ec
-                                              , std::size_t)
+        socket->async_read_some(asio::null_buffers()
+                                , [=] (const bs::error_code &ec
+                                       , std::size_t)
         {
             if (!ec) { action(socket, what); }
         });
     }
 
     if (what & CURL_POLL_OUT) {
-        socket->socket.async_write_some(asio::null_buffers()
-                                       , [=] (const bs::error_code &ec
-                                              , std::size_t)
+        socket->async_write_some(asio::null_buffers()
+                                 , [=] (const bs::error_code &ec
+                                        , std::size_t)
         {
             if (!ec) { action(socket, what); }
         });
@@ -417,17 +463,17 @@ int CurlClient::timeout(long int timeout)
     return 0;
 }
 
-void CurlClient::action(CurlSocket *socket, int what)
+void CurlClient::action(Socket *socket, int what)
 {
     CHECK_CURLM_STATUS(::curl_multi_socket_action
                        (multi_
-                        , (socket ? socket->socket.native_handle()
+                        , (socket ? socket->native_handle()
                            : CURL_SOCKET_TIMEOUT)
                         , what, &runningTransfers_)
                        , "curl_multi_socket_action");
 
     // check message info
-    int left;
+    int left(0);
     while (auto *msg = ::curl_multi_info_read(multi_, &left)) {
         if (msg->msg != CURLMSG_DONE) { continue; }
 
@@ -451,7 +497,7 @@ void CurlClient::action(CurlSocket *socket, int what)
 
 namespace http {
 
-void Http::Detail::fetch_impl(const utility::Uri &location
+void Http::Detail::fetch_impl(const std::string &location
                               , const ClientSink::pointer &sink
                               , const ContentFetcher::RequestOptions &options)
 {

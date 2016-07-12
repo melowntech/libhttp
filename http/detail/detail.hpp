@@ -11,7 +11,6 @@
 #include <boost/asio.hpp>
 #include <boost/optional.hpp>
 
-#include "utility/uri.hpp"
 #include "utility/buildsys.hpp"
 
 #include "../http.hpp"
@@ -66,7 +65,7 @@ public:
                 , const ContentGenerator::pointer &contentGenerator);
 
 private:
-    virtual void fetch_impl(const utility::Uri &location
+    virtual void fetch_impl(const std::string &location
                             , const ClientSink::pointer &sink
                             , const RequestOptions &options);
 
