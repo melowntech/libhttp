@@ -384,6 +384,7 @@ void CurlClient::fetch(const std::string &location
 
         auto native(socket->native_handle());
         sockets_.insert(SocketMap::value_type(native, socket));
+        LOG(debug) << "Opened socket " << native << ".";
         return native;
     }
 
@@ -393,6 +394,7 @@ void CurlClient::fetch(const std::string &location
 
 int CurlClient::close(::curl_socket_t s)
 {
+    LOG(debug) << "Closing socket " << s << ".";
     sockets_.erase(s);
     return 0;
 }
