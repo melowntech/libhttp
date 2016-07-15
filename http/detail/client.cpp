@@ -340,6 +340,7 @@ void ClientConnection::processHeader()
         bool noCache(false);
         bool private_(false);
         bool public_(false);
+        bool mustRevalidate(false);
 
         // process value (no exception, relaxed parsing)
         std::istringstream is(headerValue_);
@@ -356,6 +357,8 @@ void ClientConnection::processHeader()
                 is >> utility::expect('=') >> sma;
             } else if (ba::iequals(token, "max-age")) {
                 is >> utility::expect('=') >> ma;
+            } else if (ba::iequals(token, "must-revalidate")) {
+                mustRevalidate = true;
             }
         }
 
@@ -368,6 +371,8 @@ void ClientConnection::processHeader()
         } else if (noCache) {
             // cache forbidden
             maxAge_ = 0;
+        } else if (mustRevalidate) {
+            maxAge_ = constants::mustRevalidate;
         } else if (sma >= 0) {
             maxAge_ = sma;
         } else if (ma >= 0) {
