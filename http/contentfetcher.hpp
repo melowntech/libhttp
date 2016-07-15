@@ -7,6 +7,7 @@
 #include <memory>
 #include <exception>
 
+#include "./constants.hpp"
 #include "./sink.hpp"
 
 namespace http {
@@ -18,10 +19,14 @@ public:
     virtual ~ContentFetcher() {}
 
     struct RequestOptions {
-        RequestOptions() : followRedirects(true) {}
+        RequestOptions() : followRedirects(true), lastModified(-1) {}
 
         bool followRedirects;
         std::string userAgent;
+
+        /** Sends If-Modified-Since if non-negative
+         */
+        std::time_t lastModified;
     };
 
     void fetch(const std::string &location

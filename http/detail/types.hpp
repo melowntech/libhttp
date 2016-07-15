@@ -13,6 +13,7 @@ enum class StatusCode : int {
     OK = 200
 
     , Found = 302
+    , NotModified = 304
 
     , BadRequest = 400
     , NotFound = 404
@@ -25,6 +26,7 @@ enum class StatusCode : int {
 UTILITY_GENERATE_ENUM_IO(StatusCode,
     ((OK)("OK"))
     ((Found)("Found" ))
+    ((NotModified)("Not Modified"))
     ((BadRequest)("Bad Request"))
     ((NotFound)("Not Found"))
     ((NotAllowed)("Not Allowed"))
@@ -82,6 +84,8 @@ struct Response {
 
     int numericCode() const { return static_cast<int>(code); }
 };
+
+std::string formatHttpDate(std::time_t time);
 
 } } // namespace http::detail
 

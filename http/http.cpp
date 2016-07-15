@@ -27,6 +27,23 @@
 
 namespace http {
 
+namespace detail {
+const char *weekDays[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
+std::string formatHttpDate(std::time_t time)
+{
+    if (time < 0) { time = std::time(nullptr); }
+    tm bd;
+    ::gmtime_r(&time, &bd);
+    char buf[32];
+    std::memcpy(buf, weekDays[bd.tm_wday], 3);
+    std::strftime(buf + 3, sizeof(buf) - 1
+                  , ", %d %b %Y %H:%M:%S GMT", &bd);
+    return buf;
+}
+
+} // namespace detail
+
 namespace {
 
 const std::string error400(R"RAW(<html>
@@ -58,20 +75,6 @@ const std::string error405(R"RAW(<html>
 <body bgcolor="white">
 <center><h1>405 Method Not Allowed</h1></center>
 )RAW");
-
-const char *weekDays[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
-
-std::string formatHttpDate(time_t time)
-{
-    if (time < 0) { time = std::time(nullptr); }
-    tm bd;
-    ::gmtime_r(&time, &bd);
-    char buf[32];
-    std::memcpy(buf, weekDays[bd.tm_wday], 3);
-    std::strftime(buf + 3, sizeof(buf) - 1
-                  , ", %d %b %Y %H:%M:%S GMT", &bd);
-    return buf;
-}
 
 } // namespace
 
@@ -455,18 +458,23 @@ void ServerConnection::readHeader()
 
         std::istream is(&requestData_);
         if (std::isspace(is.peek())) {
+            // previous header line continuation
             if (request.headers.empty()) {
                 request.makeBroken();
                 process();
                 return;
             }
 
-            auto &header(request.headers.back());
-            if (!std::getline(is, header.value, '\r')) {
+            // read rest of line into temporary
+            std::string tmp;
+            if (!std::getline(is, tmp, '\r')) {
                 request.makeBroken();
                 process();
                 return;
             }
+            // append to previus line
+            request.headers.back().value.append(tmp);
+
             // eat '\n'
             is.get();
             readHeader();
@@ -509,9 +517,10 @@ void ServerConnection::badRequest()
     sendResponse({}, response, error400, true);
 }
 
-void ServerConnection::sendResponse(const Request &request, const Response &response
-                              , const void *data, const size_t size
-                              , bool persistent)
+void ServerConnection::sendResponse(const Request &request
+                                    , const Response &response
+                                    , const void *data, const size_t size
+                                    , bool persistent)
 {
     std::ostream os(&responseData_);
 
@@ -853,6 +862,10 @@ private:
 
         try {
             std::rethrow_exception(exc);
+        } catch (const NotModified &e) {
+            Response response(StatusCode::NotModified);
+            response.reason = e.what();
+            connection_->sendResponse(request_, response);
         } catch (const NotFound &e) {
             sendError(StatusCode::NotFound, error404, e.what());
         } catch (const NotAllowed &e) {
