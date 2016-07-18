@@ -237,7 +237,9 @@ void ClientConnection::notify(::CURLcode result)
 
             sink_->content(content_
                            , http::SinkBase::FileInfo
-                           (contentType, lastModified, expires));
+                           ((contentType ? contentType
+                             : "application/octet-stream")
+                            , lastModified, expires));
             break;
         }
 
