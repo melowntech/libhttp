@@ -1,7 +1,9 @@
 #include <boost/format.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "dbglog/dbglog.hpp"
 
+#include "utility/streams.hpp"
 #include "utility/raise.hpp"
 
 #include "../error.hpp"
@@ -9,6 +11,9 @@
 #include "./detail.hpp"
 
 #include "./curl.hpp"
+#include "./types.hpp"
+
+namespace ba = boost::algorithm;
 
 namespace http { namespace detail {
 
@@ -78,12 +83,20 @@ ClientConnection* connFromEasy(CURL *easy)
 
 extern "C" {
 
-std::size_t http_clientconnection_write(void *ptr, std::size_t size
-                                        , std::size_t nmemb, void *userp)
+std::size_t http_curlclient_write(void *ptr, std::size_t size
+                                  , std::size_t nmemb, void *userp)
 {
     auto count(size * nmemb);
     static_cast<ClientConnection*>(userp)
         ->store(static_cast<char*>(ptr), count);
+    return count;
+}
+
+std::size_t http_curlclient_header(char *buf, std::size_t size
+                                   , std::size_t nmemb, void *userp)
+{
+    auto count(size * nmemb);
+    static_cast<ClientConnection*>(userp)->header(buf, count);
     return count;
 }
 
@@ -106,8 +119,10 @@ ClientConnection
                    , const std::string &location
                    , const ClientSink::pointer &sink
                    , const ContentFetcher::RequestOptions &options)
-    : easy_(::curl_easy_init()), owner_(owner)
+    : easy_(::curl_easy_init()), headers_(), owner_(owner)
     , location_(location), sink_(sink)
+    , maxAge_(constants::cacheUnspecified)
+    , expires_(constants::cacheUnspecified)
 {
     LOG(info2) << "Starting transfer from <" << location_ << ">.";
 
@@ -139,12 +154,28 @@ ClientConnection
         SETOPT(CURLOPT_USERAGENT, options.userAgent.c_str());
     }
 
-    // write op
-    SETOPT(CURLOPT_WRITEFUNCTION, &http_clientconnection_write);
-    SETOPT(CURLOPT_WRITEDATA, this);
+    if (options.lastModified >= 0) {
+        headers_ = ::curl_slist_append
+            (headers_
+             , ("If-Modified-Since: " + formatHttpDate(options.lastModified))
+             .c_str());
+    }
 
     // follow redirects
     SETOPT(CURLOPT_FOLLOWLOCATION, long(options.followRedirects));
+
+    // set (optional) headers
+    if (headers_) { SETOPT(CURLOPT_HTTPHEADER, headers_); }
+
+    // calbacks
+
+    // header op
+    SETOPT(CURLOPT_HEADERFUNCTION, &http_curlclient_header);
+    SETOPT(CURLOPT_HEADERDATA, this);
+
+    // write op
+    SETOPT(CURLOPT_WRITEFUNCTION, &http_curlclient_write);
+    SETOPT(CURLOPT_WRITEDATA, this);
 
     // and finally set url
     SETOPT(CURLOPT_URL, location_.c_str());
@@ -163,9 +194,11 @@ ClientConnection
 
 ClientConnection::~ClientConnection()
 {
-    if (!easy_) { return; }
-    owner_.remove(*this);
-    ::curl_easy_cleanup(easy_);
+    if (easy_) {
+        owner_.remove(*this);
+        ::curl_easy_cleanup(easy_);
+    }
+    if (headers_) { ::curl_slist_free_all(headers_); }
 }
 
 void ClientConnection::notify(::CURLcode result)
@@ -196,20 +229,35 @@ void ClientConnection::notify(::CURLcode result)
                               (easy_, CURLINFO_CONTENT_TYPE, &contentType)
                               , "curl_easy_getinfo");
 
-            // TODO: fetch cache control header using CURLOPT_HEADERFUNCTION
+            // expires header
+            std::time_t expires(maxAge_);
+            if (maxAge_ == constants::cacheUnspecified) {
+                expires = expires_;
+            }
 
             sink_->content(content_
-                           , http::SinkBase::FileInfo(contentType
-                                                      , lastModified));
+                           , http::SinkBase::FileInfo
+                           ((contentType ? contentType
+                             : "application/octet-stream")
+                            , lastModified, expires));
             break;
         }
 
         case 3: {
-            char *url;
-            LOG_CURL_STATUS(::curl_easy_getinfo
-                            (easy_, CURLINFO_EFFECTIVE_URL, &url)
-                            , "curl_easy_getinfo");
-            sink_->seeOther(url);
+            char *url(nullptr);
+            switch (httpCode) {
+            case 304:
+                sink_->notModified();
+                break;
+
+            default:
+                // TODO: distinguish between codes
+                LOG_CURL_STATUS(::curl_easy_getinfo
+                                (easy_, CURLINFO_EFFECTIVE_URL, &url)
+                                , "curl_easy_getinfo");
+                sink_->seeOther(url);
+                break;
+            }
             break;
         }
 
@@ -246,9 +294,98 @@ void ClientConnection::notify(::CURLcode result)
     }
 }
 
-void ClientConnection::store(char *data, std::size_t size)
+void ClientConnection::store(const char *data, std::size_t size)
 {
     content_.append(data, size);
+}
+
+void ClientConnection::header(const char *data, std::size_t size)
+{
+    // empty line?
+    if (size <= 2) {
+        if (!headerName_.empty()) {
+            processHeader();
+        }
+        return;
+    }
+
+    // previous line continuation?
+    if (std::isspace(*data)) {
+        if (!headerName_.empty()) {
+            // we have previous header, append line (minus terminator)
+            headerValue_.append(data, size - 2);
+        }
+        return;
+    }
+
+    if (!headerName_.empty()) {
+        processHeader();
+    }
+
+    const auto *colon
+        (static_cast<const char*>(std::memchr(data, ':', size - 2)));
+    if (!colon) { return; }
+
+    // new header
+    headerName_.assign(data, colon);
+    headerValue_.assign(colon + 1, data + size - 2);
+}
+
+void ClientConnection::processHeader()
+{
+    if (ba::iequals(headerName_, "Cache-Control")) {
+        // cache control, parse
+
+        std::string token;
+        std::time_t ma(constants::cacheUnspecified);
+        std::time_t sma(constants::cacheUnspecified);
+        bool noCache(false);
+        bool private_(false);
+        bool public_(false);
+        bool mustRevalidate(false);
+
+        // process value (no exception, relaxed parsing)
+        std::istringstream is(headerValue_);
+        while (is) {
+            is >> token;
+            if (ba::iequals(token, "private")) {
+                private_ = true;
+            } else if (ba::iequals(token, "public")) {
+                public_ = true;
+            } if (ba::iequals(token, "no-cache")) {
+                noCache = true;
+                break;
+            } else if (ba::iequals(token, "s-maxage")) {
+                is >> utility::expect('=') >> sma;
+            } else if (ba::iequals(token, "max-age")) {
+                is >> utility::expect('=') >> ma;
+            } else if (ba::iequals(token, "must-revalidate")) {
+                mustRevalidate = true;
+            }
+        }
+
+        // what to do with public?
+        (void) public_;
+
+        if (private_) {
+            // private -> we cannot cache it
+            maxAge_ = 0;
+        } else if (noCache) {
+            // cache forbidden
+            maxAge_ = 0;
+        } else if (mustRevalidate) {
+            maxAge_ = constants::mustRevalidate;
+        } else if (sma >= 0) {
+            maxAge_ = sma;
+        } else if (ma >= 0) {
+            maxAge_ = ma;
+        } else {
+            // have no idea
+            maxAge_ = constants::cacheUnspecified;
+        }
+    }
+
+    headerName_.clear();
 }
 
 extern "C" {

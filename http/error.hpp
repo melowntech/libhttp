@@ -26,6 +26,7 @@ HTTP_DEFINE_ERROR(NotFound);
 HTTP_DEFINE_ERROR(Unavailable);
 HTTP_DEFINE_ERROR(InternalError);
 HTTP_DEFINE_ERROR(RequestAborted);
+HTTP_DEFINE_ERROR(NotModified);
 
 #undef HTTP_DEFINE_ERROR
 

@@ -7,6 +7,8 @@
 #include <memory>
 #include <exception>
 
+#include "./error.hpp"
+
 namespace http {
 
 /** Sink for sending/receiving data to/from the client.
@@ -160,6 +162,14 @@ public:
     typedef std::shared_ptr<ClientSink> pointer;
 
     ClientSink() {}
+
+    /** Content has not been modified. Called only when asked.
+     *  Default implementation calls error(NotModified());
+     */
+    void notModified();
+
+private:
+    virtual void notModified_impl();
 };
 
 // inlines
@@ -211,6 +221,12 @@ inline bool ServerSink::ListingItem::operator<(const ListingItem &o) const
     if (type < o.type) { return true; }
     if (o.type < type) { return false; }
     return name < o.name;
+}
+
+inline void ClientSink::notModified() { notModified_impl(); }
+
+inline void ClientSink::notModified_impl() {
+    error(NotModified("Not Modified"));
 }
 
 } // namespace http

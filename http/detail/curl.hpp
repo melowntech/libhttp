@@ -19,6 +19,7 @@
 
 #include <curl/curl.h>
 
+#include "../constants.hpp"
 #include "../sink.hpp"
 #include "../contentfetcher.hpp"
 
@@ -49,14 +50,24 @@ public:
 
     void notify(::CURLcode result);
 
-    void store(char *data, std::size_t size);
+    void store(const char *data, std::size_t size);
+
+    void header(const char *data, std::size_t size);
 
 private:
+    void processHeader();
+
     ::CURL *easy_;
+    ::curl_slist *headers_;
     CurlClient &owner_;
     std::string location_;
     ClientSink::pointer sink_;
 
+    std::string headerName_;
+    std::string headerValue_;
+
+    std::time_t maxAge_;
+    std::time_t expires_;
     std::string content_;
 };
 
