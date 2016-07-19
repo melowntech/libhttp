@@ -19,7 +19,9 @@ public:
     virtual ~ContentFetcher() {}
 
     struct RequestOptions {
-        RequestOptions() : followRedirects(true), lastModified(-1) {}
+        RequestOptions()
+            : followRedirects(true), lastModified(-1), reuse(true)
+        {}
 
         bool followRedirects;
         std::string userAgent;
@@ -27,6 +29,10 @@ public:
         /** Sends If-Modified-Since if non-negative
          */
         std::time_t lastModified;
+
+        /** Can we reuse existing connection?
+         */
+        bool reuse;
     };
 
     void fetch(const std::string &location

@@ -164,6 +164,9 @@ ClientConnection
     // follow redirects
     SETOPT(CURLOPT_FOLLOWLOCATION, long(options.followRedirects));
 
+    // single shot
+    if (!options.reuse) { SETOPT(CURLOPT_FORBID_REUSE, long(1)); }
+
     // set (optional) headers
     if (headers_) { SETOPT(CURLOPT_HTTPHEADER, headers_); }
 

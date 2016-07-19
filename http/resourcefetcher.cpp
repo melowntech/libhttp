@@ -95,15 +95,20 @@ public:
 
         if (q.size() == 1) {
             // single query -> use sink
-            contentFetcher.fetch(q.front().location(), sink);
+            ContentFetcher::RequestOptions options;
+            const auto &query(q.front());
+            options.reuse = query.reuse();
+            contentFetcher.fetch(query.location(), sink, options);
             return;
         }
 
         // multiquery -> use multiple queries
         for (auto &query : q) {
+            ContentFetcher::RequestOptions options;
+            options.reuse = query.reuse();
             contentFetcher.fetch
                 (query.location()
-                 , std::make_shared<SingleQuerySink>(sink, query));
+                 , std::make_shared<SingleQuerySink>(sink, query), options);
         }
     }
 
