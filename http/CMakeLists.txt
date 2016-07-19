@@ -7,6 +7,7 @@ set(http_SOURCES
   http.hpp http.cpp
   contentgenerator.hpp contentgenerator.cpp
   contentfetcher.hpp
+  resourcefetcher.hpp resourcefetcher.cpp
 
   detail/types.hpp
   detail/detail.hpp
