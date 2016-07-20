@@ -61,8 +61,9 @@ public:
      */
     void stop();
 
-    void listen(const utility::TcpEndpoint &listen
-                , const ContentGenerator::pointer &contentGenerator);
+    utility::TcpEndpoint
+    listen(const utility::TcpEndpoint &listen
+           , const ContentGenerator::pointer &contentGenerator);
 
 private:
     virtual void fetch_impl(const std::string &location

@@ -27,6 +27,10 @@ public:
 
     void start();
 
+    utility::TcpEndpoint localEndpoint() const {
+        return utility::TcpEndpoint(acceptor_.local_endpoint());
+    }
+
 private:
     Http::Detail &owner_;
     asio::io_service &ios_;

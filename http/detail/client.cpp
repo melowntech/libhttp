@@ -104,12 +104,12 @@ std::size_t http_curlclient_header(char *buf, std::size_t size
                                            ::curlsocktype purpose,
                                            ::curl_sockaddr *address)
 {
-    return static_cast<CurlClient*>(clientp)->open(purpose, address);
+    return static_cast<CurlClient*>(clientp)->open_cb(purpose, address);
 }
 
 int http_curlclient_closesocket(void *clientp, ::curl_socket_t item)
 {
-    return static_cast<CurlClient*>(clientp)->close(item);
+    return static_cast<CurlClient*>(clientp)->close_cb(item);
 }
 
 } // extern "C"
@@ -397,12 +397,12 @@ int http_curlclient_socket(::CURL *easy, ::curl_socket_t s, int what
                            , void *userp, void *socketp)
 {
     return static_cast<CurlClient*>(userp)
-        ->handle(easy, s, what, socketp);
+        ->handle_cb(easy, s, what, socketp);
 }
 
 int http_curlclient_timer(CURLM*, long int timeout, void *userp)
 {
-    return static_cast<CurlClient*>(userp)->timeout(timeout);
+    return static_cast<CurlClient*>(userp)->timeout_cb(timeout);
 }
 
 } // extern "C"
@@ -506,8 +506,8 @@ void CurlClient::fetch(const std::string &location
     });
 }
 
-::curl_socket_t CurlClient::open(::curlsocktype purpose,
-                                 ::curl_sockaddr *address)
+::curl_socket_t CurlClient::open_cb(::curlsocktype purpose,
+                                    ::curl_sockaddr *address)
 {
     if (purpose == CURLSOCKTYPE_IPCXN && address->family == AF_INET)
     {
@@ -515,15 +515,15 @@ void CurlClient::fetch(const std::string &location
         auto socket(std::make_shared<Socket>(ios_));
 
         bs::error_code ec;
-        socket->open(ip::tcp::v4(), ec);
+        socket->socket.open(ip::tcp::v4(), ec);
 
         if (ec) {
             LOG(warn2) << "Failed to open TCP socket: <" << ec << ">.";
             return CURL_SOCKET_BAD;
         }
 
-        auto native(socket->native_handle());
-        sockets_.insert(SocketMap::value_type(native, socket));
+        auto native(socket->handle());
+        sockets_.insert(Socket::map::value_type(native, socket));
         LOG(debug) << "Opened socket " << native << ".";
         return native;
     }
@@ -532,22 +532,134 @@ void CurlClient::fetch(const std::string &location
     return CURL_SOCKET_BAD;
 }
 
-int CurlClient::close(::curl_socket_t s)
+int CurlClient::close_cb(::curl_socket_t s)
 {
-    LOG(debug) << "Closing socket " << s << ".";
-    sockets_.erase(s);
+    // find socket
+    auto fsockets(sockets_.find(s));
+    if (fsockets == sockets_.end()) { return -1; }
+
+    // manipulate
+    auto *socket(fsockets->second.get());
+    // LOG(info4) << "Closing socket: " << socket;
+    if (socket->inProgress()) {
+        // we remove the socket right away since it is still hooked in the asio
+        // machinery
+        // mark as finished
+        // LOG(info4) << "Scheduling socket close: " << socket;
+        socket->finish();
+
+        // cancel now
+        bs::error_code ec;
+        socket->socket.cancel(ec);
+        return 0;
+    }
+
+    // socket not used anywhere, we can kill the socket right away
+    // LOG(info4) << "Closed socket: " << socket;
+    sockets_.erase(fsockets);
     return 0;
 }
 
-int CurlClient::handle(::CURL*, ::curl_socket_t s, int what
-                       , void *socketp)
+void CurlClient::shred(Socket *socket)
+{
+    // NB: this function must be called only when it is not hooked inside asio
+    // machinery
+
+    //remove socket from sockets
+    // LOG(info4) << "Closed socket: " << socket;
+    sockets_.erase(socket->handle());
+}
+
+void CurlClient::prepareRead(Socket *socket)
+{
+    // LOG(info4) << "Prepare read: " << socket;
+    socket->readInProgress = true;
+    socket->socket.async_read_some
+        (asio::null_buffers(), [=] (bs::error_code ec, std::size_t)
+    {
+        if (ec == asio::error::operation_aborted) { ec = {}; };
+
+        if (!ec) {
+            // LOG(info4) << "Reading: " << socket;
+            action(socket, CURL_CSELECT_IN);
+
+            socket->readInProgress = false;
+            if (socket->read) {
+                // LOG(info4) << "Calling prepare read again: " << socket;
+                prepareRead(socket);
+            } else {
+                // LOG(info4) << "Should not read: " << socket;
+                if (socket->finished()) { shred(socket); }
+            }
+            return;
+        }
+
+        // LOG(info4) << "Error: " << socket;
+        action(socket, CURL_CSELECT_ERR);
+        socket->readInProgress = false;
+        if (socket->finished()) { shred(socket); }
+    });
+
+    // LOG(info4) << "Out of read: " << socket;
+}
+
+void CurlClient::prepareWrite(Socket *socket)
+{
+    // LOG(info4) << "Prepare write: " << socket;
+    socket->writeInProgress = true;
+    socket->socket.async_write_some
+        (asio::null_buffers(), [=] (bs::error_code ec, std::size_t)
+    {
+        if (ec == asio::error::operation_aborted) { ec = {}; };
+
+        if (!ec) {
+            // LOG(info4) << "Writing: " << socket;
+            action(socket, CURL_CSELECT_OUT);
+
+            socket->writeInProgress = false;
+            if (socket->write) {
+                // LOG(info4) << "Calling prepare write again: " << socket;
+                prepareWrite(socket);
+            } else {
+                // LOG(info4) << "Should not write: " << socket;
+                if (socket->finished()) { shred(socket); }
+            }
+            return;
+        }
+
+        // let curl handle errors
+        // LOG(info4) << "Error: " << socket;
+        action(socket, CURL_CSELECT_ERR);
+        socket->writeInProgress = false;
+        if (socket->finished()) { shred(socket); }
+    });
+
+    // LOG(info4) << "Out of write: " << socket;
+}
+
+int CurlClient::handle_cb(::CURL*, ::curl_socket_t s, int what, void *socketp)
 {
     if (what == CURL_POLL_REMOVE) {
+        LOG(debug) << "Asked to remove socket " << s << ".";
+        if (!socketp) { return 0; }
+
+        auto *socket(static_cast<Socket*>(socketp));
+
+        // LOG(info4) << "Removing socket: " << socket;
+        socket->read = socket->write = false;
+
+        if (socket->inProgress()) {
+            LOG(debug) << "Cancelling socket io: " << socket;
+            bs::error_code ec;
+            socket->socket.cancel(ec);
+        }
+
         // nothing to do
         return 0;
     }
 
     Socket *socket;
+
     if (!socketp) {
         // find
         auto fsockets(sockets_.find(s));
@@ -561,46 +673,54 @@ int CurlClient::handle(::CURL*, ::curl_socket_t s, int what
         socket = fsockets->second.get();
 
         // assign connection to socket
-        CHECK_CURLM_STATUS
-            (::curl_multi_assign(multi_, s, socket)
-            , "curl_multi_assign");
+        CHECK_CURLM_STATUS(::curl_multi_assign(multi_, s, socket)
+                           , "curl_multi_assign");
     } else {
         socket = static_cast<Socket*>(socketp);
     }
 
-    if (what & CURL_POLL_IN) {
-        socket->async_read_some(asio::null_buffers()
-                                , [=] (const bs::error_code &ec
-                                       , std::size_t)
-        {
-            if (!ec) { action(socket, what); }
-        });
+    // bool oldRead(socket->read);
+    // bool oldWrite(socket->write);
+
+    // update read/write markers
+    socket->read = bool(what & CURL_POLL_IN);
+    socket->write = bool(what & CURL_POLL_OUT);
+
+    // LOG(info4) << "Socket state change: " << socket
+    //            << ": read " << oldRead << "->" << socket->read
+    //            << ", write " << oldWrite << "->" << socket->write;
+
+    if (socket->read && !socket->readInProgress) {
+        prepareRead(socket);
     }
 
-    if (what & CURL_POLL_OUT) {
-        socket->async_write_some(asio::null_buffers()
-                                 , [=] (const bs::error_code &ec
-                                        , std::size_t)
-        {
-            if (!ec) { action(socket, what); }
-        });
+    if (socket->write && !socket->writeInProgress) {
+        prepareWrite(socket);
     }
 
     return 0;
 }
 
-int CurlClient::timeout(long int timeout)
+int CurlClient::timeout_cb(long int timeout)
 {
-    timer_.cancel();
+    LOG(debug) << "Handling timeout (" << timeout << ")";
 
     if (timeout > 0) {
+        // positive: update timer and wait
+        timer_.cancel();
         timer_.expires_from_now(boost::posix_time::millisec(timeout));
         timer_.async_wait([this](const bs::error_code &ec)
         {
-            if (!ec) { action(); }
+            if (ec != asio::error::operation_aborted) {
+                // regular timeout
+                action();
+            }
         });
-    } else {
+    } else if (!timeout) {
         action();
+    } else {
+        // negative: cancel
+        timer_.cancel();
     }
     return 0;
 }
@@ -609,7 +729,7 @@ void CurlClient::action(Socket *socket, int what)
 {
     CHECK_CURLM_STATUS(::curl_multi_socket_action
                        (multi_
-                        , (socket ? socket->native_handle()
+                        , (socket ? socket->handle()
                            : CURL_SOCKET_TIMEOUT)
                         , what, &runningTransfers_)
                        , "curl_multi_socket_action");

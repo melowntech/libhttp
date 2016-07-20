@@ -162,13 +162,15 @@ void Http::Detail::stop()
     running_ = false;
 }
 
-void Http::Detail::listen(const utility::TcpEndpoint &listen
-                          , const ContentGenerator::pointer &contentGenerator)
+utility::TcpEndpoint
+Http::Detail::listen(const utility::TcpEndpoint &listen
+                     , const ContentGenerator::pointer &contentGenerator)
 {
     std::unique_lock<std::mutex> lock(connMutex_);
 
     acceptors_.push_back(std::make_shared<detail::Acceptor>
                          (*this, ios_, listen, contentGenerator));
+    return acceptors_.back()->localEndpoint();
 }
 
 void Http::Detail::worker(std::size_t id)
@@ -615,7 +617,11 @@ void ServerConnection
 
     // optional data
     auto dataSize(source->size());
-    os << "Content-Length: " << dataSize << "\r\n";
+    if (dataSize >= 0) {
+        os << "Content-Length: " << dataSize << "\r\n";
+    } else {
+        os << "Transfer-Encoding: chunked\r\n";
+    }
     if (response.close) { os << "ServerConnection: close\r\n"; }
 
     os << "\r\n";
@@ -660,11 +666,13 @@ void ServerConnection
         Sender(const ServerConnection::pointer &conn
                , const Request &request, const Response &response
                , const SinkBase::DataSource::pointer &source
-               , std::size_t size)
+               , long size)
             : conn(conn), request(request), response(response)
-            , source(source), total(), bytesLeft(size), off()
-            , buf(1 << 16)
-        {}
+            , source(source), chunked(size < 0)
+            , total(), bytesLeft(size), off()
+            , crlf("\r\n"), buf(1 << 16)
+        {
+        }
 
         void start() {
             auto self(shared_from_this());
@@ -694,35 +702,91 @@ void ServerConnection
         }
 
         void sendBody() {
-            if (bytesLeft) {
-                std::size_t s(0);
-                try {
-                    s = source->read(buf.data(), buf.size(), off);
-                } catch (const std::exception &e) {
-                    // force close
-                    LOG(err2) << "Error while reading from data source \""
-                              << source->name() << "\": <"
-                              << e.what() << ">.";
-                    source->close();
-                    conn->close();
-                    return;
-                }
-
-                off += s;
-                bytesLeft -= s;
-                auto self(shared_from_this());
-                asio::async_write
-                    (conn->socket_, asio::buffer(buf.data(), s)
-                     , conn->strand_.wrap
-                     ([self, this](const bs::error_code &ec
-                                   , std::size_t bytes)
-                {
-                    bodySent(ec, bytes);
-                }));
+            if (!bytesLeft) {
+                done();
                 return;
             }
 
-            done();
+            std::size_t s(0);
+            try {
+                s = source->read(buf.data(), buf.size(), off);
+            } catch (const std::exception &e) {
+                // force close
+                LOG(err2) << "Error while reading from data source \""
+                          << source->name() << "\": <"
+                          << e.what() << ">.";
+                source->close();
+                conn->close();
+                return;
+            }
+
+            // handle chunking
+            if (chunked) {
+                std::ostringstream os;
+                os << std::hex << s << crlf;
+                if (!s) {
+                    // last chunk
+                    bytesLeft = 0;
+                    os << crlf;
+                }
+                chunk = os.str();
+            } else {
+                bytesLeft -= s;
+            }
+
+            off += s;
+            auto self(shared_from_this());
+
+            if (chunked) {
+                if (!s) {
+                    // empty chunk
+                    asio::async_write
+                        (conn->socket_
+                         , asio::const_buffers_1(chunk.data()
+                                                 , chunk.size())
+                         , conn->strand_.wrap
+                         ([self, this](const bs::error_code &ec
+                                       , std::size_t bytes)
+                          {
+                              bodySent(ec, bytes);
+                          }));
+                    return;
+                }
+
+                // complex chunk: chunk header, body, trailer
+
+                std::array<asio::const_buffer, 3> buffers;
+                buffers[0] = asio::buffer
+                    (asio::const_buffer(chunk.data()
+                                        , chunk.size()));
+                buffers[1] = asio::buffer
+                    (asio::const_buffer(buf.data(), s));
+                buffers[2] = asio::buffer
+                    (asio::const_buffer(crlf.data(), crlf.size()));
+
+                // send all buffers at once
+                asio::async_write
+                    (conn->socket_, buffers
+                     , conn->strand_.wrap
+                     ([self, this](const bs::error_code &ec
+                                   , std::size_t bytes)
+                      {
+                          bodySent(ec, bytes);
+                      }));
+            } else {
+                // non-chunked
+                LOG(info4) << "Sending non-chunked.";
+                asio::async_write
+                    (conn->socket_, asio::const_buffers_1(buf.data(), s)
+                     , conn->strand_.wrap
+                     ([self, this](const bs::error_code &ec
+                                   , std::size_t bytes)
+                      {
+                          bodySent(ec, bytes);
+                      }));
+            }
+
+            return;
         }
 
         void bodySent(const bs::error_code &ec, std::size_t bytes)
@@ -752,9 +816,12 @@ void ServerConnection
         Response response;
         SinkBase::DataSource::pointer source;
 
+        bool chunked;
         std::size_t total;
-        std::size_t bytesLeft;
+        long bytesLeft;
         std::size_t off;
+        std::string chunk;
+        std::string crlf;
         std::vector<char> buf;
     };
 
@@ -926,17 +993,18 @@ Http::Http()
 {
 }
 
-void Http::listen(const utility::TcpEndpoint &listen
-                  , const ContentGenerator::pointer &contentGenerator)
+utility::TcpEndpoint
+Http::listen(const utility::TcpEndpoint &listen
+             , const ContentGenerator::pointer &contentGenerator)
 {
-    detail().listen(listen, contentGenerator);
+    return detail().listen(listen, contentGenerator);
 }
 
-void Http::listen(const utility::TcpEndpoint &listen
-                  , ContentGenerator &contentGenerator)
+utility::TcpEndpoint Http::listen(const utility::TcpEndpoint &listen
+                                  , ContentGenerator &contentGenerator)
 {
-    detail().listen(listen, ContentGenerator::pointer
-                    (&contentGenerator, [](void*){}));
+    return detail().listen(listen, ContentGenerator::pointer
+                           (&contentGenerator, [](void*){}));
 }
 
 void Http::startServer(unsigned int threadCount)

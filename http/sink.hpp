@@ -45,6 +45,10 @@ public:
     public:
         typedef std::shared_ptr<DataSource> pointer;
 
+        DataSource(bool hasContentLength = true)
+            : hasContentLength_(hasContentLength)
+        {}
+
         virtual ~DataSource() {}
 
         virtual FileInfo stat() const = 0;
@@ -56,7 +60,16 @@ public:
 
         virtual void close() const {}
 
-        virtual std::size_t size() const = 0;
+        /** Returns size of response.
+         *  >=0: exact length, use content-length
+         *  <0: unknown, use content-transfer-encoding chunked
+         */
+        virtual long size() const = 0;
+
+        bool hasContentLength() const { return hasContentLength_; }
+
+    private:
+        bool hasContentLength_;
     };
 
     /** Sends content to client.

@@ -1,7 +1,7 @@
 set(http_DEPENDS )
 
 define_module(LIBRARY http
-  DEPENDS math utility dbglog Boost)
+  DEPENDS math utility dbglog Boost CURL)
 
 set(http_SOURCES
   http.hpp http.cpp
@@ -21,3 +21,5 @@ add_library(http STATIC ${http_SOURCES})
 buildsys_library(http)
 target_link_libraries(http ${MODULE_LIBRARIES})
 buildsys_target_compile_definitions(http ${MODULE_DEFINITIONS})
+
+add_subdirectory(test)

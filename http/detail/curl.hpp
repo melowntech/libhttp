@@ -71,9 +71,40 @@ private:
     std::string content_;
 };
 
-typedef ip::tcp::socket Socket;
-typedef std::shared_ptr<Socket> SocketPointer;
-typedef std::map<curl_socket_t, SocketPointer> SocketMap;
+struct Socket : boost::noncopyable {
+    typedef std::shared_ptr<Socket> pointer;
+    typedef std::map<curl_socket_t, pointer> map;
+
+    ip::tcp::socket socket;
+    bool read;
+    bool write;
+    bool readInProgress;
+    bool writeInProgress;
+
+    Socket(asio::io_service &ios)
+        : socket(ios), read(false), write(false)
+        , readInProgress(false), writeInProgress(false)
+        , finished_(false)
+    {}
+
+    bool inProgress() const { return readInProgress || writeInProgress; }
+
+    void finish() {
+        read = write = readInProgress = writeInProgress = false;
+        finished_ = true;
+    }
+
+    bool finished() const {
+        return finished_ && !inProgress();
+    }
+
+    auto handle() -> decltype(socket.native_handle()) {
+        return socket.native_handle();
+    }
+
+private:
+    bool finished_;
+};
 
 class CurlClient : boost::noncopyable {
 public:
@@ -89,15 +120,15 @@ public:
     void add(ClientConnection &conn);
     void remove(ClientConnection &conn);
 
-    int handle(::CURL *easy, ::curl_socket_t s, int what
-               , void *socketp);
+    int handle_cb(::CURL *easy, ::curl_socket_t s, int what
+                  , void *socketp);
 
-    int timeout(long int timeout);
+    int timeout_cb(long int timeout);
 
-    ::curl_socket_t open(::curlsocktype purpose,
-                         ::curl_sockaddr *address);
+    ::curl_socket_t open_cb(::curlsocktype purpose,
+                            ::curl_sockaddr *address);
 
-    int close(::curl_socket_t s);
+    int close_cb(::curl_socket_t s);
 
 private:
     void start(unsigned int id);
@@ -105,6 +136,10 @@ private:
     void run(unsigned int id);
 
     void action(Socket *socket = nullptr, int what = 0);
+
+    void prepareRead(Socket *socket);
+    void prepareWrite(Socket *socket);
+    void shred(Socket *socket);
 
     ::CURLM *multi_;
     asio::io_service ios_;
@@ -115,7 +150,7 @@ private:
     struct HandleIdx {};
 
     ClientConnection::set connections_;
-    SocketMap sockets_;
+    Socket::map sockets_;
     int runningTransfers_;
 };
 

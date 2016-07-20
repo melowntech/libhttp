@@ -28,17 +28,31 @@ public:
 
     /** Listen at given endpoint and as content generator to generate replies to
      *  received requests.
+     *  Returned value can be different if port was 0 (i.e. listen at any
+     *  available port)
+     *
+     * \param listen address where to listen
+     * \param contentGenerator request handler
+     * \return real listening endpoint
      */
-    void listen(const utility::TcpEndpoint &listen
-                , const ContentGenerator::pointer &contentGenerator);
+    utility::TcpEndpoint
+    listen(const utility::TcpEndpoint &listen
+           , const ContentGenerator::pointer &contentGenerator);
 
     /** Listen at given endpoint and as content generator to generate replies to
      *  received requests.
      *
      *  NB: contentGenerator must survive this object
+     *
+     *  Returned value can be different if port was 0 (i.e. listen at any
+     *  available port)
+     *
+     * \param listen address where to listen
+     * \param contentGenerator request handler
+     * \return real listening endpoint
      */
-    void listen(const utility::TcpEndpoint &listen
-                , ContentGenerator &contentGenerator);
+    utility::TcpEndpoint listen(const utility::TcpEndpoint &listen
+                                , ContentGenerator &contentGenerator);
 
     /** Start server-side processing machinery.
      */
