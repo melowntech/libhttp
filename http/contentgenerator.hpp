@@ -8,6 +8,7 @@
 #include <exception>
 
 #include "./sink.hpp"
+#include "./request.hpp"
 
 namespace http {
 
@@ -16,20 +17,20 @@ public:
     typedef std::shared_ptr<ContentGenerator> pointer;
 
     virtual ~ContentGenerator() {}
-    void generate(const std::string &location
+    void generate(const Request &request
                   , const ServerSink::pointer &sink);
 
 private:
-    virtual void generate_impl(const std::string &location
+    virtual void generate_impl(const Request &request
                                , const ServerSink::pointer &sink) = 0;
 };
 
 // inlines
 
-inline void ContentGenerator::generate(const std::string &location
+inline void ContentGenerator::generate(const Request &request
                                        , const ServerSink::pointer &sink)
 {
-    return generate_impl(location, sink);
+    return generate_impl(request, sink);
 }
 
 } // namespace http

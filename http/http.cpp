@@ -25,6 +25,8 @@
 #include "./detail/serverconnection.hpp"
 #include "./detail/acceptor.hpp"
 
+namespace ba = boost::algorithm;
+
 namespace http {
 
 namespace detail {
@@ -970,7 +972,7 @@ void Http::Detail::request(const detail::ServerConnection::pointer &connection
     auto sink(std::make_shared<detail::HttpSink>(request, connection));
     try {
         if ((request.method == "HEAD") || (request.method == "GET")) {
-            connection->contentGenerator()->generate(request.uri, sink);
+            connection->contentGenerator()->generate(request, sink);
         } else {
             sink->error(utility::makeError<NotAllowed>
                         ("Method %s is not supported.", request.method));
@@ -1024,6 +1026,16 @@ void Http::stop()
 
 ContentFetcher& Http::fetcher() {
     return detail();
+}
+
+bool Request::hasHeader(const std::string &name) const
+{
+    for (const auto &header : headers) {
+        if (ba::iequals(header.name, name)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace http

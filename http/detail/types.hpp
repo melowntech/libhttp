@@ -7,6 +7,8 @@
 
 #include "utility/enum-io.hpp"
 
+#include "../request.hpp"
+
 namespace http { namespace detail {
 
 enum class StatusCode : int {
@@ -34,22 +36,11 @@ UTILITY_GENERATE_ENUM_IO(StatusCode,
     ((ServiceUnavailable)("Service Unavailabe"))
 )
 
-struct Header {
-    std::string name;
-    std::string value;
+typedef http::Header Header;
 
-    typedef std::vector<Header> list;
-
-    Header() {}
-    Header(const std::string &name, const std::string &value)
-        : name(name), value(value) {}
-};
-
-struct Request {
+struct Request : http::Request {
     std::string method;
-    std::string uri;
     std::string version;
-    Header::list headers;
     std::size_t lines;
 
     enum class State { reading, ready, broken };
