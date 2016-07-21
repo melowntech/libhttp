@@ -200,8 +200,6 @@ ClientConnection::~ClientConnection()
 
 void ClientConnection::notify(::CURLcode result)
 {
-    LOG(info2) << "Transfer from <" << location_ << "> finished.";
-
     if (result != CURLE_OK) {
         sink_->error(utility::makeError<Error>
                      ("Transfer of <%s> failed: <%d, %s>."
@@ -209,11 +207,18 @@ void ClientConnection::notify(::CURLcode result)
         return;
     }
 
+    bool logged(false);
     try {
         long int httpCode(500);
         CHECK_CURL_STATUS(::curl_easy_getinfo
                           (easy_, CURLINFO_RESPONSE_CODE, &httpCode)
                           , "curl_easy_getinfo");
+
+        LOG(info2)
+            << "Transfer from <" << location_ << "> finished, status="
+            << httpCode << ".";
+        logged = true;
+
         switch (httpCode / 100) {
         case 2: {
             // cool, we have some content, fetch info and report it
@@ -302,6 +307,11 @@ void ClientConnection::notify(::CURLcode result)
             break;
         }
     } catch (...) {
+        if (!logged) {
+            LOG(err2)
+                << "Transfer from <" << location_ << "> finished, "
+                "status unknown.";
+        }
         sink_->error();
     }
 }
