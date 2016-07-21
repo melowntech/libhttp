@@ -23,6 +23,9 @@ struct ProtocolError : Error {
 
 HTTP_DEFINE_ERROR(NotAllowed);
 HTTP_DEFINE_ERROR(NotFound);
+HTTP_DEFINE_ERROR(NotAuthorized);
+HTTP_DEFINE_ERROR(BadRequest);
+HTTP_DEFINE_ERROR(ClientError);
 HTTP_DEFINE_ERROR(Unavailable);
 HTTP_DEFINE_ERROR(InternalError);
 HTTP_DEFINE_ERROR(RequestAborted);

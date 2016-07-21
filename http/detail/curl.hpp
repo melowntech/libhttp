@@ -59,7 +59,6 @@ private:
 
     ::CURL *easy_;
     ::curl_slist *headers_;
-    CurlClient &owner_;
     std::string location_;
     ClientSink::pointer sink_;
 
@@ -117,8 +116,8 @@ public:
                , const ClientSink::pointer &sink
                , const ContentFetcher::RequestOptions &options);
 
-    void add(ClientConnection &conn);
-    void remove(ClientConnection &conn);
+    void add(std::unique_ptr<ClientConnection> &&conn);
+    void remove(ClientConnection *conn);
 
     int handle_cb(::CURL *easy, ::curl_socket_t s, int what
                   , void *socketp);

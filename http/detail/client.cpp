@@ -119,7 +119,7 @@ ClientConnection
                    , const std::string &location
                    , const ClientSink::pointer &sink
                    , const ContentFetcher::RequestOptions &options)
-    : easy_(::curl_easy_init()), headers_(), owner_(owner)
+    : easy_(::curl_easy_init()), headers_()
     , location_(location), sink_(sink)
     , maxAge_(constants::cacheUnspecified)
     , expires_(constants::cacheUnspecified)
@@ -188,19 +188,13 @@ ClientConnection
     SETOPT(CURLOPT_CLOSESOCKETFUNCTION, &http_curlclient_closesocket);
     SETOPT(CURLOPT_CLOSESOCKETDATA, &owner);
 
-    // add to owner
-    owner_.add(*this);
-
     // release from guard
     guard.easy = nullptr;
 }
 
 ClientConnection::~ClientConnection()
 {
-    if (easy_) {
-        owner_.remove(*this);
-        ::curl_easy_cleanup(easy_);
-    }
+    if (easy_) { ::curl_easy_cleanup(easy_); }
     if (headers_) { ::curl_slist_free_all(headers_); }
 }
 
@@ -266,14 +260,29 @@ void ClientConnection::notify(::CURLcode result)
 
         case 4:
             switch (httpCode) {
-            case 405:
-                sink_->error(utility::makeError<NotAllowed>
-                             ("Method Not Allowed"));
+            case 400:
+                sink_->error(utility::makeError<BadRequest>
+                             ("Bad Request"));
+                break;
+
+            case 401:
+                sink_->error(utility::makeError<NotAuthorized>
+                             ("Not Authorized"));
                 break;
 
             case 404:
                 sink_->error(utility::makeError<NotFound>
                              ("Not Found"));
+                break;
+
+            case 405:
+                sink_->error(utility::makeError<NotAllowed>
+                             ("Method Not Allowed"));
+                break;
+
+            default:
+                sink_->error(utility::makeError<ClientError>
+                             ("Other Client Error"));
                 break;
             }
             break;
@@ -434,9 +443,11 @@ CurlClient::~CurlClient()
     // connections
     stop();
 
-    // destroy sockets and connection
-    for (auto conn : connections_) { delete conn; }
-    connections_.clear();
+    // destroy sockets and connections
+    while (!connections_.empty()) {
+        auto *conn(*connections_.begin());
+        remove(conn);
+    }
     sockets_.clear();
 
     LOG_CURLM_STATUS(::curl_multi_cleanup(multi_)
@@ -451,6 +462,7 @@ void CurlClient::start(unsigned int id)
 
 void CurlClient::stop()
 {
+    LOG(info2) << "Stopping";
     work_ = boost::none;
     worker_.join();
     ios_.stop();
@@ -474,20 +486,26 @@ void CurlClient::run(unsigned int id)
     }
 }
 
-void CurlClient::add(ClientConnection &conn)
+void CurlClient::add(std::unique_ptr<ClientConnection> &&conn)
 {
-    LOG(info1) << "Adding connection " << conn.handle();
+    auto *c(conn.get());
+    connections_.insert(conn.get());
+    LOG(debug) << "Adding connection " << c->handle();
     CHECK_CURLM_STATUS(::curl_multi_add_handle
-                       (multi_, conn.handle())
+                       (multi_, c->handle())
                        , "curl_multi_add_handle");
+    conn.release();
 }
 
-void CurlClient::remove(ClientConnection &conn)
+void CurlClient::remove(ClientConnection *conn)
 {
-    LOG(info1) << "Removing connection " << conn.handle();
-    CHECK_CURLM_STATUS(::curl_multi_remove_handle
-                       (multi_, conn.handle())
-                       , "curl_multi_remove_handle");
+    if (connections_.erase(conn)) {
+        LOG(debug) << "Removing connection " << conn->handle();
+        CHECK_CURLM_STATUS(::curl_multi_remove_handle
+                           (multi_, conn->handle())
+                           , "curl_multi_remove_handle");
+        delete conn;
+    }
 }
 
 void CurlClient::fetch(const std::string &location
@@ -497,9 +515,8 @@ void CurlClient::fetch(const std::string &location
     ios_.post([=]()
     {
         try {
-            std::unique_ptr<ClientConnection> conn
-                (new ClientConnection(*this, location, sink, options));
-            connections_.insert(conn.release());
+            add(std::unique_ptr<ClientConnection>
+                (new ClientConnection(*this, location, sink, options)));
         } catch (...) {
             sink->error();
         }
@@ -750,8 +767,7 @@ void CurlClient::action(Socket *socket, int what)
         conn->notify(msg->data.result);
 
         // get rid of connection
-        connections_.erase(conn);
-        delete conn;
+        remove(conn);
     }
 }
 
@@ -763,14 +779,21 @@ void Http::Detail::fetch_impl(const std::string &location
                               , const ClientSink::pointer &sink
                               , const ContentFetcher::RequestOptions &options)
 {
-    if (clients_.empty()) {
-        LOGTHROW(err2, Error)
-            << "Cannot perform fetch request: no client is running.";
-    }
+    // must be under lock
+    try {
+        std::unique_lock<std::mutex> lock(clientMutex_);
 
-    (*currentClient_++)->fetch(location, sink, options);
-    if (currentClient_ == clients_.end()) {
-        currentClient_ = clients_.begin();
+        if (clients_.empty()) {
+            LOGTHROW(err2, Error)
+                << "Cannot perform fetch request: no client is running.";
+        }
+
+        (*currentClient_)->fetch(location, sink, options);
+        if (++currentClient_ == clients_.end()) {
+            currentClient_ = clients_.begin();
+        }
+    } catch (...) {
+        sink->error();
     }
 }
 

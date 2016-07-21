@@ -83,6 +83,8 @@ private:
     std::condition_variable connCond_;
     std::atomic<bool> running_;
 
+    std::mutex clientMutex_;
+
     /** CURL based clients.
      */
     detail::CurlClient::list clients_;
