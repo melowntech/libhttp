@@ -19,8 +19,7 @@ public:
     {}
 
 private:
-    virtual void perform_impl(const MultiQuery &query, const Done &done)
-        const;
+    virtual void perform_impl(MultiQuery query, const Done &done) const;
 
     ContentFetcher &contentFetcher_;
     boost::asio::io_service *queryIos_;

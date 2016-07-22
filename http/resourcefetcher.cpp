@@ -33,9 +33,10 @@ struct QuerySinkBase {
     std::shared_ptr<ResourceFetcher::MultiQuery> query_;
     ResourceFetcher::Done done_;
 
-    QuerySinkBase(const ResourceFetcher::MultiQuery &query
+    QuerySinkBase(ResourceFetcher::MultiQuery &&query
                   , const ResourceFetcher::Done &done)
-        : query_(std::make_shared<ResourceFetcher::MultiQuery>(query))
+        : query_(std::make_shared<ResourceFetcher::MultiQuery>
+                 (std::move(query)))
         , done_(done)
     {}
 };
@@ -47,11 +48,11 @@ class QuerySink
 public:
     typedef std::shared_ptr<QuerySink> pointer;
 
-    QuerySink(const ResourceFetcher::MultiQuery &query
+    QuerySink(ResourceFetcher::MultiQuery &&query
               , asio::io_service *ios
               , const ResourceFetcher::Done &done)
-        : QuerySinkBase(query, done)
-        , SingleQuerySink(((query.size() == 1)
+        : QuerySinkBase(std::move(query), done)
+        , SingleQuerySink(((query_->size() == 1)
                            ? std::shared_ptr<QuerySink>(this, [](void*){})
                            : pointer())
                           , query_->front())
@@ -65,9 +66,11 @@ public:
             try {
                 LOG(info2) << "All subqueries finished.";
                 if (ios_) {
-                    ios_->post([done_, query_]() { done_(*query_); });
+                    ios_->post([done_, query_]() {
+                            done_(std::move(*query_));
+                        });
                 } else {
-                    done_(*query_);
+                    done_(std::move(*query_));
                 }
             } catch (const std::exception &e) {
                 LOG(err2)
@@ -82,17 +85,18 @@ public:
     static void fetch(const pointer &sink
                       , http::ContentFetcher &contentFetcher)
     {
-        auto &q(*sink->query_);
-        if (q.empty()) {
+        if (sink->query_->empty()) {
+            auto &q(sink->query_);
             // ehm...
             if (sink->ios_) {
-                sink->ios_->post([=]() { sink->done_(q); });
+                sink->ios_->post([=]() { sink->done_(std::move(*q)); });
             } else {
-                sink->done_(q);
+                sink->done_(std::move(*q));
             }
             return;
         }
 
+        auto &q(*sink->query_);
         if (q.size() == 1) {
             // single query -> use sink
             ContentFetcher::RequestOptions options;
@@ -139,11 +143,11 @@ void SingleQuerySink::seeOther_impl(const std::string &url)
 
 } // namespace
 
-void ResourceFetcher::perform_impl(const MultiQuery &query, const Done &done)
+void ResourceFetcher::perform_impl(MultiQuery query, const Done &done)
     const
 {
     QuerySink::fetch
-        (std::make_shared<QuerySink>(query, queryIos_, done)
+        (std::make_shared<QuerySink>(std::move(query), queryIos_, done)
          , contentFetcher_);
 }
 
