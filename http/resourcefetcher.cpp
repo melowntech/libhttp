@@ -23,6 +23,9 @@ struct SingleQuerySink : public http::ClientSink {
 
     virtual void error_impl(const std::exception_ptr &exc);
 
+    virtual void error_impl(const std::error_code &ec
+                            , const std::string &message);
+
     virtual void seeOther_impl(const std::string &url);
 
     std::shared_ptr<QuerySink> owner;
@@ -132,6 +135,13 @@ void SingleQuerySink::content_impl(const void *data, std::size_t size
 void SingleQuerySink::error_impl(const std::exception_ptr &exc)
 {
     query->error(exc);
+    owner->ping();
+}
+
+void SingleQuerySink::error_impl(const std::error_code &ec
+                                 , const std::string&)
+{
+    query->error(ec);
     owner->ping();
 }
 

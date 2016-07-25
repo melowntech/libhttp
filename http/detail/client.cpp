@@ -266,28 +266,24 @@ void ClientConnection::notify(::CURLcode result)
         case 4:
             switch (httpCode) {
             case 400:
-                sink_->error(utility::makeError<BadRequest>
-                             ("Bad Request"));
+                sink_->error(make_error_code(utility::HttpCode::BadRequest));
                 break;
 
             case 401:
-                sink_->error(utility::makeError<NotAuthorized>
-                             ("Not Authorized"));
+                sink_->error(make_error_code
+                             (utility::HttpCode::NotAuthorized));
                 break;
 
             case 404:
-                sink_->error(utility::makeError<NotFound>
-                             ("Not Found"));
+                sink_->error(make_error_code(utility::HttpCode::NotFound));
                 break;
 
             case 405:
-                sink_->error(utility::makeError<NotAllowed>
-                             ("Method Not Allowed"));
+                sink_->error(make_error_code(utility::HttpCode::NotAllowed));
                 break;
 
             default:
-                sink_->error(utility::makeError<ClientError>
-                             ("Other Client Error"));
+                sink_->error(make_error_code(utility::HttpCode::BadRequest));
                 break;
             }
             break;
@@ -295,13 +291,13 @@ void ClientConnection::notify(::CURLcode result)
         default:
             switch (httpCode) {
             case 503:
-                sink_->error(utility::makeError<Unavailable>
-                             ("Service Not Available"));
+                sink_->error(make_error_code
+                             (utility::HttpCode::ServiceUnavailable));
                 break;
 
             default:
-                sink_->error(utility::makeError<InternalError>
-                             ("Server error %d.", httpCode));
+                sink_->error(make_error_code
+                             (utility::HttpCode::InternalServerError));
                 break;
             }
             break;

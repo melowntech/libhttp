@@ -517,7 +517,10 @@ void ServerConnection::badRequest()
     response.close = true;
     response.reason = "Bad request";
 
-    LOG(debug) << "About to send http error: <" << response.code << ">.";
+    LOG(debug)
+        << "About to send http error: <"
+        << utility::httpCodeCategory().message(static_cast<int>(response.code))
+        << ">.";
 
     response.headers.emplace_back("Content-Type", "text/html; charset=utf-8");
 
@@ -532,7 +535,8 @@ void ServerConnection::sendResponse(const Request &request
     std::ostream os(&responseData_);
 
     os << request.version << ' ' << response.numericCode() << ' '
-       << response.code << "\r\n";
+       << utility::httpCodeCategory().message(static_cast<int>(response.code))
+       << "\r\n";
 
     os << "Date: " << formatHttpDate(-1) << "\r\n";
     os << "Server: " << ubs::TargetName << '/' << ubs::TargetVersion << "\r\n";
@@ -912,18 +916,18 @@ private:
         content(os.str(), { "text/html; charset=utf-8" });
     }
 
-    virtual void error_impl(const std::exception_ptr &exc)
+    void errorCode(utility::HttpCode code, const std::string &message)
     {
-        if (!valid()) { return; }
-
-        auto sendError([&](StatusCode statusCode
+        auto sendError([&](utility::HttpCode code
                            , const std::string &body
                            , const std::string &reason)
         {
             LOG(debug)
-                << "About to send http error: <" << statusCode << ">.";
+                << "About to send http error: <"
+                << utility::httpCodeCategory().message(static_cast<int>(code))
+                << ">.";
 
-            Response response(statusCode);
+            Response response(code);
             response.reason = reason;
             response.headers.emplace_back
                 ("Content-Type", "text/html; charset=utf-8");
@@ -932,22 +936,66 @@ private:
                 (request_, response, body.data(), body.size(), true);
         });
 
+        // HTTP code
+        switch (code) {
+        case utility::HttpCode::NotModified: {
+            Response response(code);
+            response.reason = message;
+            connection_->sendResponse(request_, response);
+            break;
+        }
+
+        case utility::HttpCode::NotFound:
+            sendError(code, error404, message);
+            break;
+
+        case utility::HttpCode::NotAllowed:
+            sendError(code, error405, message);
+            break;
+
+        case utility::HttpCode::ServiceUnavailable:
+            sendError(code, error503, message);
+            break;
+
+        case utility::HttpCode::InternalServerError:
+            sendError(code, error500, message);
+            break;
+
+        default:
+            sendError(utility::HttpCode::InternalServerError
+                      , error500, message);
+            break;
+        }
+    }
+
+    virtual void error_impl(const std::error_code &ec
+                            , const std::string &message)
+    {
+        if (!valid()) { return; }
+
+        // is it HTTP code?
+        if (ec.category() != utility::httpCodeCategory()) {
+            errorCode(utility::HttpCode::InternalServerError, message);
+            return;
+        }
+
+        errorCode(static_cast<utility::HttpCode>(ec.value())
+                  , message.empty() ? ec.message() : message);
+    }
+
+    virtual void error_impl(const std::exception_ptr &exc)
+    {
+        if (!valid()) { return; }
+
         try {
             std::rethrow_exception(exc);
-        } catch (const NotModified &e) {
-            Response response(StatusCode::NotModified);
-            response.reason = e.what();
-            connection_->sendResponse(request_, response);
-        } catch (const NotFound &e) {
-            sendError(StatusCode::NotFound, error404, e.what());
-        } catch (const NotAllowed &e) {
-            sendError(StatusCode::NotAllowed, error405, e.what());
-        } catch (const Unavailable &e) {
-            sendError(StatusCode::ServiceUnavailable, error503, e.what());
+        } catch (const utility::HttpError &e) {
+            errorCode(static_cast<utility::HttpCode>(e.code().value())
+                      , e.what());
         } catch (const std::exception &e) {
-            sendError(StatusCode::InternalServerError, error500, e.what());
+            errorCode(StatusCode::InternalServerError, e.what());
         } catch (...) {
-            sendError(StatusCode::InternalServerError, error500, "Uknown");
+            errorCode(StatusCode::InternalServerError, "Unknown");
         }
     }
 

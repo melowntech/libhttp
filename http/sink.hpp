@@ -102,6 +102,14 @@ public:
      */
     void error(const std::exception_ptr &exc);
 
+    /** Sends given error to the client.
+     */
+    void error(const std::error_code &ec, const std::string &message = "");
+
+    /** Shortcut for http errors.
+     */
+    void error(const HttpError &exc);
+
     /** Tell client to look somewhere else.
      */
     void seeOther(const std::string &url);
@@ -114,6 +122,8 @@ private:
     virtual void content_impl(const void *data, std::size_t size
                               , const FileInfo &stat, bool needCopy) = 0;
     virtual void error_impl(const std::exception_ptr &exc) = 0;
+    virtual void error_impl(const std::error_code &ec
+                            , const std::string &message) = 0;
     virtual void seeOther_impl(const std::string &url) = 0;
 };
 
@@ -219,6 +229,17 @@ inline void SinkBase::error(const std::exception_ptr &exc)
     error_impl(exc);
 }
 
+inline void SinkBase::error(const std::error_code &ec
+                            , const std::string &message)
+{
+    error_impl(ec, message);
+}
+
+inline void SinkBase::error(const HttpError &exc)
+{
+    error_impl(exc.code(), exc.what());
+}
+
 template <typename T> inline void SinkBase::error(const T &exc) {
     error_impl(std::make_exception_ptr(exc));
 }
@@ -239,7 +260,7 @@ inline bool ServerSink::ListingItem::operator<(const ListingItem &o) const
 inline void ClientSink::notModified() { notModified_impl(); }
 
 inline void ClientSink::notModified_impl() {
-    error(NotModified("Not Modified"));
+    error(make_error_code(utility::HttpCode::NotModified));
 }
 
 } // namespace http

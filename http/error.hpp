@@ -6,29 +6,33 @@
 #include <memory>
 #include <stdexcept>
 
+#include "utility/httpcode.hpp"
+
 namespace http {
 
 struct Error : std::runtime_error {
     Error(const std::string &message) : std::runtime_error(message) {}
 };
 
-struct ProtocolError : Error {
-    ProtocolError(const std::string &message) : Error(message) {}
+struct RequestAborted : Error {
+    RequestAborted(const std::string &message) : Error(message) {}
 };
 
+typedef utility::HttpError HttpError;
+
 #define HTTP_DEFINE_ERROR(NAME)                                         \
-    struct NAME : ProtocolError {                                       \
-        NAME(const std::string &message) : ProtocolError(message) {}    \
+    struct NAME : HttpError {                                           \
+        NAME(const std::string &message)                                \
+            : HttpError(make_error_code(utility::HttpCode::NAME)        \
+                                 , message) {}                          \
     }
 
 HTTP_DEFINE_ERROR(NotAllowed);
 HTTP_DEFINE_ERROR(NotFound);
 HTTP_DEFINE_ERROR(NotAuthorized);
 HTTP_DEFINE_ERROR(BadRequest);
-HTTP_DEFINE_ERROR(ClientError);
-HTTP_DEFINE_ERROR(Unavailable);
-HTTP_DEFINE_ERROR(InternalError);
-HTTP_DEFINE_ERROR(RequestAborted);
+HTTP_DEFINE_ERROR(ServiceUnavailable);
+HTTP_DEFINE_ERROR(InternalServerError);
 HTTP_DEFINE_ERROR(NotModified);
 
 #undef HTTP_DEFINE_ERROR

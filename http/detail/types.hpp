@@ -11,30 +11,7 @@
 
 namespace http { namespace detail {
 
-enum class StatusCode : int {
-    OK = 200
-
-    , Found = 302
-    , NotModified = 304
-
-    , BadRequest = 400
-    , NotFound = 404
-    , NotAllowed = 405
-
-    , InternalServerError = 500
-    , ServiceUnavailable = 503
-};
-
-UTILITY_GENERATE_ENUM_IO(StatusCode,
-    ((OK)("OK"))
-    ((Found)("Found" ))
-    ((NotModified)("Not Modified"))
-    ((BadRequest)("Bad Request"))
-    ((NotFound)("Not Found"))
-    ((NotAllowed)("Not Allowed"))
-    ((InternalServerError)("Internal Server Error"))
-    ((ServiceUnavailable)("Service Unavailabe"))
-)
+typedef utility::HttpCode StatusCode;
 
 typedef http::Header Header;
 
