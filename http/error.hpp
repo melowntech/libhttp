@@ -14,10 +14,6 @@ struct Error : std::runtime_error {
     Error(const std::string &message) : std::runtime_error(message) {}
 };
 
-struct RequestAborted : Error {
-    RequestAborted(const std::string &message) : Error(message) {}
-};
-
 typedef utility::HttpError HttpError;
 
 #define HTTP_DEFINE_ERROR(NAME)                                         \
@@ -34,6 +30,7 @@ HTTP_DEFINE_ERROR(BadRequest);
 HTTP_DEFINE_ERROR(ServiceUnavailable);
 HTTP_DEFINE_ERROR(InternalServerError);
 HTTP_DEFINE_ERROR(NotModified);
+HTTP_DEFINE_ERROR(RequestAborted);
 
 #undef HTTP_DEFINE_ERROR
 
