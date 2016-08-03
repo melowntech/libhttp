@@ -1,7 +1,7 @@
 set(http_DEPENDS )
 
 define_module(LIBRARY http
-  DEPENDS math utility dbglog Boost CURL)
+  DEPENDS utility dbglog Boost CURL)
 
 set(http_SOURCES
   http.hpp http.cpp
