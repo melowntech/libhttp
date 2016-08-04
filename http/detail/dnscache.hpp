@@ -43,9 +43,9 @@ private:
 template <typename ResolveHandler>
 void DnsCache::resolve(const utility::Uri &uri, const ResolveHandler &rh)
 {
-    const auto key((uri.port <= 0)
-                   ? uri.host
-                   : str(boost::format("%s:%d") % uri.host % uri.port));
+    const auto key((uri.port() <= 0)
+                   ? uri.host()
+                   : str(boost::format("%s:%d") % uri.host() % uri.port()));
 
     Endpoints endpoints;
     {
@@ -73,7 +73,7 @@ void DnsCache::resolve(const utility::Uri &uri, const ResolveHandler &rh)
     // resolve hostname
     resolver_.async_resolve
         (boost::asio::ip::tcp::resolver::query
-         (uri.host, uri.schema)
+         (uri.host, uri.scheme())
          , [rh, key, this](const boost::system::error_code &ec
                            , boost::asio::ip::tcp::resolver::iterator i)
           mutable
