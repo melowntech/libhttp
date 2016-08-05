@@ -550,7 +550,7 @@ void ServerConnection::sendResponse(const Request &request
     } else {
         os << "Content-Length: 0\r\n";
     }
-    if (response.close) { os << "ServerConnection: close\r\n"; }
+    if (response.close) { os << "Connection: close\r\n"; }
 
     os << "\r\n";
 
