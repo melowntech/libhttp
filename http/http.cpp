@@ -24,6 +24,7 @@
 #include "./detail/types.hpp"
 #include "./detail/serverconnection.hpp"
 #include "./detail/acceptor.hpp"
+#include "./asio.hpp"
 
 namespace ba = boost::algorithm;
 
@@ -158,6 +159,7 @@ void Http::Detail::stop()
     }
 
     work_ = boost::none;
+    ios_.stop();
 
     while (!workers_.empty()) {
         workers_.back().join();
@@ -1087,6 +1089,11 @@ bool Request::hasHeader(const std::string &name) const
         }
     }
     return false;
+}
+
+boost::asio::io_service& ioService(const Http &http)
+{
+    return Http::Detail::detail(http).ioService();
 }
 
 } // namespace http

@@ -65,6 +65,10 @@ public:
     listen(const utility::TcpEndpoint &listen
            , const ContentGenerator::pointer &contentGenerator);
 
+    static Detail& detail(const Http &http) { return *http.detail_; }
+
+    asio::io_service& ioService() { return ios_; }
+
 private:
     virtual void fetch_impl(const std::string &location
                             , const ClientSink::pointer &sink
