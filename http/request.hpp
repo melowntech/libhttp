@@ -22,7 +22,14 @@ struct Request {
     Header::list headers;
 
     bool hasHeader(const std::string &name) const;
+
+    const std::string* getHeader(const std::string &name) const;
 };
+
+inline bool Request::hasHeader(const std::string &name) const
+{
+    return getHeader(name);
+}
 
 } // namespace http
 

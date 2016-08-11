@@ -1081,14 +1081,14 @@ ContentFetcher& Http::fetcher() {
     return detail();
 }
 
-bool Request::hasHeader(const std::string &name) const
+const std::string* Request::getHeader(const std::string &name) const
 {
     for (const auto &header : headers) {
         if (ba::iequals(header.name, name)) {
-            return true;
+            return &header.value;
         }
     }
-    return false;
+    return nullptr;
 }
 
 boost::asio::io_service& ioService(const Http &http)
