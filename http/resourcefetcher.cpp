@@ -19,7 +19,8 @@ struct SingleQuerySink : public http::ClientSink {
     {}
 
     virtual void content_impl(const void *data, std::size_t size
-                              , const FileInfo &stat, bool);
+                              , const FileInfo &stat, bool
+                              , const Header::list *headers);
 
     virtual void error_impl(const std::exception_ptr &exc);
 
@@ -125,7 +126,8 @@ private:
 };
 
 void SingleQuerySink::content_impl(const void *data, std::size_t size
-                                   , const FileInfo &stat, bool)
+                                   , const FileInfo &stat, bool
+                                   , const Header::list*)
 {
     query->set(stat.lastModified, stat.expires, data, size
                , stat.contentType);

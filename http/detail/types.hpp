@@ -50,6 +50,14 @@ struct Response {
         : code(code), close(false)
     {}
 
+    Response(const Header::list *extraHeaders = nullptr
+             , StatusCode code = StatusCode::OK)
+        : code(code)
+    {
+        if (extraHeaders) { headers = *extraHeaders; }
+    }
+
+
     int numericCode() const { return static_cast<int>(code); }
 };
 

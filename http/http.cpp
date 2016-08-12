@@ -786,7 +786,7 @@ void ServerConnection
                       }));
             } else {
                 // non-chunked
-                LOG(info4) << "Sending non-chunked.";
+                LOG(info1) << "Sending non-chunked.";
                 asio::async_write
                     (conn->socket_, asio::const_buffers_1(buf.data(), s)
                      , conn->strand_.wrap
@@ -851,11 +851,12 @@ public:
 
 private:
     virtual void content_impl(const void *data, std::size_t size
-                              , const FileInfo &stat, bool needCopy)
+                              , const FileInfo &stat, bool needCopy
+                              , const Header::list *headers)
     {
         if (!valid()) { return; }
 
-        Response response;
+        Response response(headers);
         response.headers.emplace_back("Content-Type", stat.contentType);
         response.headers.emplace_back
             ("Last-Modified", formatHttpDate(stat.lastModified));
@@ -867,7 +868,7 @@ private:
     {
         if (!valid()) { return; }
 
-        Response response;
+        Response response(source->headers());
         connection_->sendResponse(request_, response, source);
     }
 

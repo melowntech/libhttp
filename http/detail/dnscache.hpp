@@ -73,7 +73,7 @@ void DnsCache::resolve(const utility::Uri &uri, const ResolveHandler &rh)
     // resolve hostname
     resolver_.async_resolve
         (boost::asio::ip::tcp::resolver::query
-         (uri.host, uri.scheme())
+         (uri.host(), uri.scheme())
          , [rh, key, this](const boost::system::error_code &ec
                            , boost::asio::ip::tcp::resolver::iterator i)
           mutable

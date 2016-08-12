@@ -8,6 +8,7 @@
 #include <exception>
 
 #include "./error.hpp"
+#include "./request.hpp"
 
 namespace http {
 
@@ -66,6 +67,10 @@ public:
          */
         virtual long size() const = 0;
 
+        /** Additional headers sent to output.
+         */
+        virtual const Header::list *headers() const { return nullptr; }
+
         bool hasContentLength() const { return hasContentLength_; }
 
     private:
@@ -75,24 +80,30 @@ public:
     /** Sends content to client.
      * \param data data top send
      * \param stat file info (size is ignored)
+     * \param headers additional (optional) headers
      */
-    void content(const std::string &data, const FileInfo &stat);
+    void content(const std::string &data, const FileInfo &stat
+                 , const Header::list *headers = nullptr);
 
     /** Sends content to client.
      * \param data data top send
      * \param stat file info (size is ignored)
+     * \param headers additional (optional) headers
      */
     template <typename T>
-    void content(const std::vector<T> &data, const FileInfo &stat);
+    void content(const std::vector<T> &data, const FileInfo &stat
+                 , const Header::list *headers = nullptr);
 
     /** Sends content to client.
      * \param data data top send
      * \param size size of data
      * \param stat file info (size is ignored)
      * \param needCopy data are copied if set to true
+     * \param headers additional (optional) headers
      */
     void content(const void *data, std::size_t size
-                 , const FileInfo &stat, bool needCopy);
+                 , const FileInfo &stat, bool needCopy
+                 , const Header::list *headers = nullptr);
 
     /** Sends current exception to the client.
      */
@@ -120,7 +131,8 @@ public:
 
 private:
     virtual void content_impl(const void *data, std::size_t size
-                              , const FileInfo &stat, bool needCopy) = 0;
+                              , const FileInfo &stat, bool needCopy
+                              , const Header::list *headers) = 0;
     virtual void error_impl(const std::exception_ptr &exc) = 0;
     virtual void error_impl(const std::error_code &ec
                             , const std::string &message) = 0;
@@ -197,21 +209,24 @@ private:
 
 // inlines
 
-inline void SinkBase::content(const std::string &data, const FileInfo &stat)
+inline void SinkBase::content(const std::string &data, const FileInfo &stat
+                              , const Header::list *headers)
 {
-    content_impl(data.data(), data.size(), stat, true);
+    content_impl(data.data(), data.size(), stat, true, headers);
 }
 
 inline void SinkBase::content(const void *data, std::size_t size
-                              , const FileInfo &stat, bool needCopy)
+                              , const FileInfo &stat, bool needCopy
+                              , const Header::list *headers)
 {
-    content_impl(data, size, stat, needCopy);
+    content_impl(data, size, stat, needCopy, headers);
 }
 
 template <typename T>
-inline void SinkBase::content(const std::vector<T> &data, const FileInfo &stat)
+inline void SinkBase::content(const std::vector<T> &data, const FileInfo &stat
+                              , const Header::list *headers)
 {
-    content_impl(data.data(), data.size() * sizeof(T), stat, true);
+    content_impl(data.data(), data.size() * sizeof(T), stat, true, headers);
 }
 
 inline void ServerSink::content(const DataSource::pointer &source)
