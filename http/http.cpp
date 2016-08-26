@@ -846,10 +846,26 @@ public:
     HttpSink(const Request &request
              , const ServerConnection::pointer &connection)
         : request_(request), connection_(connection)
+        , responseSent_(false)
     {}
-    ~HttpSink() {}
+
+    ~HttpSink() {
+        try {
+            if (!responseSent_) {
+                errorCode(utility::HttpCode::InternalServerError
+                          , "No response sent.");
+            }
+        } catch (...) {}
+    }
 
 private:
+    template <typename ...Args>
+    inline void sendResponse(Args &&...args)
+    {
+        connection_->sendResponse(std::forward<Args>(args)...);
+        responseSent_ = true;
+    }
+
     virtual void content_impl(const void *data, std::size_t size
                               , const FileInfo &stat, bool needCopy
                               , const Header::list *headers)
@@ -861,7 +877,7 @@ private:
         response.headers.emplace_back
             ("Last-Modified", formatHttpDate(stat.lastModified));
 
-        connection_->sendResponse(request_, response, data, size, !needCopy);
+        sendResponse(request_, response, data, size, !needCopy);
     }
 
     virtual void content_impl(const SinkBase::DataSource::pointer &source)
@@ -869,8 +885,8 @@ private:
         if (!valid()) { return; }
 
         Response response(source->headers());
-        connection_->sendResponse(request_, response, source);
-    }
+        sendResponse(request_, response, source);
+   }
 
     virtual void seeOther_impl(const std::string &url)
     {
@@ -878,7 +894,7 @@ private:
 
         Response response(StatusCode::Found);
         response.headers.emplace_back("Location", url);
-        connection_->sendResponse(request_, response);
+        sendResponse(request_, response);
     }
 
     virtual void listing_impl(const Listing &list)
@@ -935,7 +951,7 @@ private:
             response.headers.emplace_back
                 ("Content-Type", "text/html; charset=utf-8");
 
-            connection_->sendResponse
+            sendResponse
                 (request_, response, body.data(), body.size(), true);
         });
 
@@ -944,7 +960,7 @@ private:
         case utility::HttpCode::NotModified: {
             Response response(code);
             response.reason = message;
-            connection_->sendResponse(request_, response);
+            sendResponse(request_, response);
             break;
         }
 
@@ -1007,6 +1023,11 @@ private:
     }
 
     bool valid() const {
+        if (responseSent_) {
+            LOG(warn2) << "An attempt to send a reply to the client after "
+                "another response has been already sent. Check your code.";
+            return false;
+        }
         return connection_->valid();
     }
 
@@ -1016,6 +1037,8 @@ private:
 
     Request request_;
     ServerConnection::pointer connection_;
+
+    bool responseSent_;
 };
 
 } // namespace detail
