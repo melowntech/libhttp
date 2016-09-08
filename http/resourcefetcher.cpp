@@ -106,6 +106,7 @@ public:
             ContentFetcher::RequestOptions options;
             const auto &query(q.front());
             options.reuse = query.reuse();
+            options.timeout = query.timeout();
             contentFetcher.fetch(query.location(), sink, options);
             return;
         }
@@ -114,6 +115,7 @@ public:
         for (auto &query : q) {
             ContentFetcher::RequestOptions options;
             options.reuse = query.reuse();
+            options.timeout = query.timeout();
             contentFetcher.fetch
                 (query.location()
                  , std::make_shared<SingleQuerySink>(sink, query), options);

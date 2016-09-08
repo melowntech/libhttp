@@ -167,6 +167,11 @@ ClientConnection
     // single shot
     if (!options.reuse) { SETOPT(CURLOPT_FORBID_REUSE, long(1)); }
 
+    // set timeout
+    if (options.timeout > 0) {
+        SETOPT(CURLOPT_TIMEOUT_MS, long(options.timeout));
+    }
+
     // set (optional) headers
     if (headers_) { SETOPT(CURLOPT_HTTPHEADER, headers_); }
 

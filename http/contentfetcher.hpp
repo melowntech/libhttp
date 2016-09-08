@@ -20,7 +20,7 @@ public:
 
     struct RequestOptions {
         RequestOptions()
-            : followRedirects(true), lastModified(-1), reuse(true)
+            : followRedirects(true), lastModified(-1), reuse(true), timeout(-1)
         {}
 
         bool followRedirects;
@@ -33,6 +33,8 @@ public:
         /** Can we reuse existing connection?
          */
         bool reuse;
+
+        long timeout;
     };
 
     void fetch(const std::string &location
