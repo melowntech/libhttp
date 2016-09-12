@@ -7,6 +7,8 @@
 #include <memory>
 #include <exception>
 
+#include <boost/optional.hpp>
+
 #include "./error.hpp"
 #include "./request.hpp"
 
@@ -30,15 +32,15 @@ public:
          */
         std::time_t lastModified;
 
-        /** Timestamp of expiration, -1 means never
+        /** File max age. <0: no-cache, >=0 max-age=value
          */
-        std::time_t expires;
+        boost::optional<long> maxAge;
 
         FileInfo(const std::string &contentType = "application/octet-stream"
                  , std::time_t lastModified = -1
-                 , std::time_t expires = -1)
+                 , const boost::optional<long> &maxAge = boost::none)
             : contentType(contentType), lastModified(lastModified)
-            , expires(expires)
+            , maxAge(maxAge)
         {}
     };
 

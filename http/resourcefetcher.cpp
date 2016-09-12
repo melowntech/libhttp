@@ -131,8 +131,12 @@ void SingleQuerySink::content_impl(const void *data, std::size_t size
                                    , const FileInfo &stat, bool
                                    , const Header::list*)
 {
-    query->set(stat.lastModified, stat.expires, data, size
-               , stat.contentType);
+    // TODO: make better (use response Date field)
+    std::time_t expires(-1);
+    if (stat.maxAge && (*stat.maxAge >= 0)) {
+        expires = std::time(nullptr) + *stat.maxAge;
+    }
+    query->set(stat.lastModified, expires, data, size, stat.contentType);
     owner->ping();
 }
 

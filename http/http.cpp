@@ -626,6 +626,15 @@ void ServerConnection
     os << "Content-Type: " << stat.contentType << "\r\n";
     os << "Last-Modified: " << formatHttpDate(stat.lastModified) << "\r\n";
 
+    if (stat.maxAge) {
+        auto maxAge(*stat.maxAge);
+        if (maxAge < 0) {
+            os << "Cache-Control: no-cache\r\n";
+        } else {
+            os << "Cache-Control: max-age=" << maxAge << "\r\n";
+        }
+    }
+
     // optional data
     auto dataSize(source->size());
     if (dataSize >= 0) {
@@ -633,7 +642,7 @@ void ServerConnection
     } else {
         os << "Transfer-Encoding: chunked\r\n";
     }
-    if (response.close) { os << "ServerConnection: close\r\n"; }
+    if (response.close) { os << "Connection: close\r\n"; }
 
     os << "\r\n";
 
@@ -876,6 +885,17 @@ private:
         response.headers.emplace_back("Content-Type", stat.contentType);
         response.headers.emplace_back
             ("Last-Modified", formatHttpDate(stat.lastModified));
+
+        if (stat.maxAge) {
+            auto maxAge(*stat.maxAge);
+            if (maxAge < 0) {
+                response.headers.emplace_back("Cache-Control", "no-cache");
+            } else {
+                response.headers.emplace_back
+                    ("Cache-Control"
+                     , str(boost::format("max-age=%d") % maxAge));
+            }
+        }
 
         sendResponse(request_, response, data, size, !needCopy);
     }
