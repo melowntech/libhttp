@@ -957,7 +957,7 @@ private:
 </html>
 )RAW";
 
-        content(os.str(), { "text/html; charset=utf-8" });
+        content(os.str(), { "text/html; charset=utf-8", -1, -1 });
     }
 
     void errorCode(utility::HttpCode code, const std::string &message)
