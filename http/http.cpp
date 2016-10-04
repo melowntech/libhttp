@@ -17,6 +17,7 @@
 #include "utility/gccversion.hpp"
 #include "utility/streams.hpp"
 #include "utility/thread.hpp"
+#include "utility/uri.hpp"
 
 #include "./error.hpp"
 #include "./http.hpp"
@@ -427,6 +428,10 @@ void ServerConnection::readRequest()
             process();
             return;
         }
+
+        // make uri clean
+        request.uri = utility::Uri::removeDotSegments(request.uri);
+
         readHeader();
     });
 
