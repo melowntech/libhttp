@@ -18,7 +18,18 @@ struct Header {
 };
 
 struct Request {
+    /** Uri as received from client
+     */
     std::string uri;
+
+    /** Cleaned-up path from uri
+     */
+    std::string path;
+
+    /** Query string from uri
+     */
+    std::string query;
+
     Header::list headers;
 
     bool hasHeader(const std::string &name) const;

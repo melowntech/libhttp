@@ -26,6 +26,7 @@ typedef utility::HttpError HttpError;
 HTTP_DEFINE_ERROR(NotAllowed);
 HTTP_DEFINE_ERROR(NotFound);
 HTTP_DEFINE_ERROR(NotAuthorized);
+HTTP_DEFINE_ERROR(Forbidden);
 HTTP_DEFINE_ERROR(BadRequest);
 HTTP_DEFINE_ERROR(ServiceUnavailable);
 HTTP_DEFINE_ERROR(InternalServerError);

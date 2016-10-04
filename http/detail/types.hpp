@@ -33,6 +33,8 @@ struct Request : http::Request {
     void clear() {
         method.clear();
         uri.clear();
+        path.clear();
+        query.clear();
         version = "HTTP/1.1";
         headers.clear();
         lines = 0;

@@ -429,8 +429,18 @@ void ServerConnection::readRequest()
             return;
         }
 
-        // make uri clean
-        request.uri = utility::Uri::removeDotSegments(request.uri);
+        // process uri
+        {
+            auto qm(request.uri.find('?'));
+            if (qm != std::string::npos) {
+                request.path = utility::Uri::removeDotSegments
+                    (request.uri.substr(0, qm));
+                request.query = request.uri.substr(qm + 1);
+            } else {
+                request.path = utility::Uri::removeDotSegments(request.uri);
+                request.query.clear();
+            }
+        }
 
         readHeader();
     });
