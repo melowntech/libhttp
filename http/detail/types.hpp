@@ -54,7 +54,7 @@ struct Response {
 
     Response(const Header::list *extraHeaders = nullptr
              , StatusCode code = StatusCode::OK)
-        : code(code)
+        : code(code), close(false)
     {
         if (extraHeaders) { headers = *extraHeaders; }
     }
