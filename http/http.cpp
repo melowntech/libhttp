@@ -942,7 +942,7 @@ private:
     {
         if (!valid()) { return; }
 
-        std::string path;
+        std::string path(request_.path);
 
         std::ostringstream os;
         os << R"RAW(<html>
