@@ -56,6 +56,12 @@ const std::string error400(R"RAW(<html>
 <center><h1>400 Bad Request</h1></center>
 )RAW");
 
+const std::string error403(R"RAW(<html>
+<head><title>403 Forbidden</title></head>
+<body bgcolor="white">
+<center><h1>403 Forbidden</h1></center>
+)RAW");
+
 const std::string error404(R"RAW(<html>
 <head><title>404 Not Found</title></head>
 <body bgcolor="white">
@@ -998,6 +1004,10 @@ private:
             sendResponse(request_, response);
             break;
         }
+
+        case utility::HttpCode::Forbidden:
+            sendError(code, error403, message);
+            break;
 
         case utility::HttpCode::NotFound:
             sendError(code, error404, message);
