@@ -99,6 +99,7 @@ Http::Detail::Detail()
     : work_(std::ref(ios_))
     , dnsCache_(ios_)
     , running_(false)
+    , serverHeader_("httpd/unknown")
     , currentClient_()
 {}
 
@@ -440,10 +441,11 @@ void ServerConnection::readRequest()
             auto qm(request.uri.find('?'));
             if (qm != std::string::npos) {
                 request.path = utility::Uri::removeDotSegments
-                    (request.uri.substr(0, qm));
+                    (utility::urlDecode(request.uri.substr(0, qm)));
                 request.query = request.uri.substr(qm + 1);
             } else {
-                request.path = utility::Uri::removeDotSegments(request.uri);
+                request.path = utility::Uri::removeDotSegments
+                    (utility::urlDecode(request.uri));
                 request.query.clear();
             }
         }
@@ -562,7 +564,7 @@ void ServerConnection::sendResponse(const Request &request
        << "\r\n";
 
     os << "Date: " << formatHttpDate(-1) << "\r\n";
-    os << "Server: " << ubs::TargetName << '/' << ubs::TargetVersion << "\r\n";
+    os << "Server: " << owner_.serverHeader() << "\r\n";
     for (const auto &hdr : response.headers) {
         os << hdr.name << ": "  << hdr.value << "\r\n";
     }
@@ -637,7 +639,7 @@ void ServerConnection
        << response.code << "\r\n";
 
     os << "Date: " << formatHttpDate(-1) << "\r\n";
-    os << "Server: " << ubs::TargetName << '/' << ubs::TargetVersion << "\r\n";
+    os << "Server: " << owner_.serverHeader() << "\r\n";
     for (const auto &hdr : response.headers) {
         os << hdr.name << ": "  << hdr.value << "\r\n";
     }
@@ -1144,6 +1146,11 @@ void Http::startClient(unsigned int threadCount)
 void Http::stop()
 {
     detail().stop();
+}
+
+void Http::serverHeader(const std::string &value)
+{
+    detail().serverHeader(value);
 }
 
 ContentFetcher& Http::fetcher() {

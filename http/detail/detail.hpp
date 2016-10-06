@@ -69,6 +69,12 @@ public:
 
     asio::io_service& ioService() { return ios_; }
 
+    void serverHeader(const std::string &value) {
+        serverHeader_ = value;
+    }
+
+    const std::string& serverHeader() const { return serverHeader_; }
+
 private:
     virtual void fetch_impl(const std::string &location
                             , const ClientSink::pointer &sink
@@ -86,6 +92,7 @@ private:
     std::mutex connMutex_;
     std::condition_variable connCond_;
     std::atomic<bool> running_;
+    std::string serverHeader_;
 
     std::mutex clientMutex_;
 

@@ -66,6 +66,10 @@ public:
      */
     void stop();
 
+    /** Set server header.
+     */
+    void serverHeader(const std::string &value);
+
     /** Returns content fetcher interface.
      */
     ContentFetcher& fetcher();
