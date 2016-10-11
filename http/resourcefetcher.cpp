@@ -70,8 +70,11 @@ public:
             try {
                 LOG(info2) << "All subqueries finished.";
                 if (ios_) {
-                    ios_->post([done_, query_]() {
-                            done_(std::move(*query_));
+                    // need to copy
+                    auto &done(done_);
+                    auto &query(query_);
+                    ios_->post([done, query]() {
+                            done(std::move(*query));
                         });
                 } else {
                     done_(std::move(*query_));

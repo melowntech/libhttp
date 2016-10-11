@@ -6,6 +6,7 @@
 #include <string>
 #include <atomic>
 #include <thread>
+#include <condition_variable>
 
 #include <boost/noncopyable.hpp>
 #include <boost/asio.hpp>

@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/format.hpp>
