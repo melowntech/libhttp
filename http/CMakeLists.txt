@@ -1,5 +1,5 @@
 # bump version here
-set(http_VERSION 1.0)
+set(http_VERSION 1.1)
 
 set(http_DEPENDS )
 
@@ -11,6 +11,7 @@ set(http_SOURCES
   contentgenerator.hpp contentgenerator.cpp
   contentfetcher.hpp
   resourcefetcher.hpp resourcefetcher.cpp
+  ondemandclient.hpp ondemandclient.cpp
 
   detail/types.hpp
   detail/detail.hpp
