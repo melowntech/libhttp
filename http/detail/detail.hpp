@@ -79,9 +79,10 @@ public:
      */
     void startServer(std::size_t count);
 
-    /** Starts server threads.
+    /** Starts client threads.
      */
-    void startClient(std::size_t count);
+    void startClient(std::size_t count,
+                     const ContentFetcher::Options *options = nullptr);
 
     /** Strop all threads.
      */

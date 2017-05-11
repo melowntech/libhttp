@@ -152,7 +152,8 @@ void Http::Detail::startServer(std::size_t count)
 }
 
 
-void Http::Detail::startClient(std::size_t count)
+void Http::Detail::startClient(std::size_t count,
+                               const ContentFetcher::Options *options)
 {
     if (!clients_.empty()) {
         LOGTHROW(err3, Error)
@@ -160,7 +161,7 @@ void Http::Detail::startClient(std::size_t count)
     }
 
     for (std::size_t id(1); id <= count; ++id) {
-        clients_.push_back(std::make_shared<detail::CurlClient>(id));
+        clients_.push_back(std::make_shared<detail::CurlClient>(id, options));
     }
     currentClient_ = clients_.begin();
 }
@@ -1163,9 +1164,10 @@ void Http::startServer(unsigned int threadCount)
     detail().startServer(threadCount);
 }
 
-void Http::startClient(unsigned int threadCount)
+void Http::startClient(unsigned int threadCount,
+                       const http::ContentFetcher::Options *options)
 {
-    detail().startClient(threadCount);
+    detail().startClient(threadCount, options);
 }
 
 void Http::stop()

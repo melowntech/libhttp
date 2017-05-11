@@ -171,8 +171,18 @@ ClientConnection
     SETOPT(CURLOPT_NOSIGNAL, 1L);
     // retain last modified time
     SETOPT(CURLOPT_FILETIME, 1L);
+    
+#if LIBCURL_VERSION_NUM >= 0x072100 // 7.33.0
+    // try to force HTTP/2.0
+    if (::curl_easy_setopt(easy_, CURLOPT_HTTP_VERSION,
+                           CURL_HTTP_VERSION_2_0) != CURLE_OK) {
+        // fallback force HTTP/1.1
+        SETOPT(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    }
+#else
     // force HTTP/1.1
     SETOPT(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+#endif
 
     // use user agent
     if (!options.userAgent.empty()) {
@@ -452,7 +462,7 @@ int http_curlclient_timer(CURLM*, long int timeout, void *userp)
 
 } // extern "C"
 
-CurlClient::CurlClient(int id)
+CurlClient::CurlClient(int id, const ContentFetcher::Options *options)
     : multi_(::curl_multi_init())
     , work_(std::ref(ios_))
     , timer_(ios_)
@@ -467,6 +477,23 @@ CurlClient::CurlClient(int id)
     MSETOPT(CURLMOPT_SOCKETDATA, this);
     MSETOPT(CURLMOPT_TIMERFUNCTION, &http_curlclient_timer);
     MSETOPT(CURLMOPT_TIMERDATA, this);
+    
+    if (options) {
+        if (options->maxHostConnections) {
+            MSETOPT(CURLMOPT_MAX_HOST_CONNECTIONS,
+                    options->maxHostConnections);
+        }
+        if (options->maxTotalConections) {
+            MSETOPT(CURLMOPT_MAX_TOTAL_CONNECTIONS,
+                    options->maxTotalConections);
+        }
+        if (options->maxCacheConections) {
+            MSETOPT(CURLMOPT_MAXCONNECTS, options->maxCacheConections);
+        }
+        if (options->pipelining) {
+            MSETOPT(CURLMOPT_PIPELINING, options->pipelining);
+        }
+    }
 
     start(id);
 }

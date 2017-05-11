@@ -85,7 +85,8 @@ public:
 
     /** Start client-side processing machinery.
      */
-    void startClient(unsigned int threadCount);
+    void startClient(unsigned int threadCount,
+                     const ContentFetcher::Options *options = nullptr);
 
     /** Stop processing machinery.
      */

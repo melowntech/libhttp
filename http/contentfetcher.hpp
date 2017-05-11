@@ -43,6 +43,20 @@ public:
 
     virtual ~ContentFetcher() {}
 
+    struct Options {
+        Options()
+            : maxHostConnections(0),
+              maxTotalConections(0),
+              maxCacheConections(0),
+              pipelining(0)
+        {}
+        
+        unsigned long maxHostConnections;
+        unsigned long maxTotalConections;
+        unsigned long maxCacheConections;
+        long pipelining;
+    };
+    
     struct RequestOptions {
         RequestOptions()
             : followRedirects(true), lastModified(-1), reuse(true), timeout(-1)

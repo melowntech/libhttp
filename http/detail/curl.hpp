@@ -134,7 +134,7 @@ class CurlClient : boost::noncopyable {
 public:
     typedef std::shared_ptr<CurlClient> pointer;
     typedef std::vector<CurlClient::pointer> list;
-    CurlClient(int id);
+	CurlClient(int id, const ContentFetcher::Options *options = nullptr);
     ~CurlClient();
 
     void fetch(const std::string &location
