@@ -171,7 +171,7 @@ ClientConnection
     SETOPT(CURLOPT_NOSIGNAL, 1L);
     // retain last modified time
     SETOPT(CURLOPT_FILETIME, 1L);
-    
+
 #if LIBCURL_VERSION_NUM >= 0x072100 // 7.33.0
     // try to force HTTP/2.0
     if (::curl_easy_setopt(easy_, CURLOPT_HTTP_VERSION,
@@ -194,6 +194,17 @@ ClientConnection
             (headers_
              , ("If-Modified-Since: " + formatHttpDate(options.lastModified))
              .c_str());
+    }
+
+    // push custom headers
+    {
+        std::ostringstream os;
+        for (const auto &header : options.headers) {
+            os.str("");
+            // TODO: sanitize header name/value
+            os << header.first << ": " << header.second;
+            headers_ = ::curl_slist_append(headers_, os.str().c_str());
+        }
     }
 
     // follow redirects
@@ -477,8 +488,9 @@ CurlClient::CurlClient(int id, const ContentFetcher::Options *options)
     MSETOPT(CURLMOPT_SOCKETDATA, this);
     MSETOPT(CURLMOPT_TIMERFUNCTION, &http_curlclient_timer);
     MSETOPT(CURLMOPT_TIMERDATA, this);
-    
+
     if (options) {
+#if LIBCURL_VERSION_NUM >= 0x071E00 // 7.30.0
         if (options->maxHostConnections) {
             MSETOPT(CURLMOPT_MAX_HOST_CONNECTIONS,
                     options->maxHostConnections);
@@ -487,6 +499,8 @@ CurlClient::CurlClient(int id, const ContentFetcher::Options *options)
             MSETOPT(CURLMOPT_MAX_TOTAL_CONNECTIONS,
                     options->maxTotalConections);
         }
+#endif
+
         if (options->maxCacheConections) {
             MSETOPT(CURLMOPT_MAXCONNECTS, options->maxCacheConections);
         }

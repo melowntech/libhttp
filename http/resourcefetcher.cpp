@@ -128,25 +128,31 @@ public:
             return;
         }
 
+        auto queryOptions([&](const ResourceFetcher::Query &query)
+                          -> ContentFetcher::RequestOptions
+        {
+            ContentFetcher::RequestOptions options;
+            options.reuse = query.reuse();
+            options.timeout = query.timeout();
+            const auto &headers(query.options());
+            options.headers.assign(headers.begin(), headers.end());
+            return options;
+        });
+
         auto &q(*sink->query_);
         if (q.size() == 1) {
             // single query -> use sink
-            ContentFetcher::RequestOptions options;
             const auto &query(q.front());
-            options.reuse = query.reuse();
-            options.timeout = query.timeout();
-            contentFetcher.fetch(query.location(), sink, options);
+            contentFetcher.fetch(query.location(), sink, queryOptions(query));
             return;
         }
 
         // multiquery -> use multiple queries
         for (auto &query : q) {
-            ContentFetcher::RequestOptions options;
-            options.reuse = query.reuse();
-            options.timeout = query.timeout();
             contentFetcher.fetch
                 (query.location()
-                 , std::make_shared<SingleQuerySink>(sink, query), options);
+                 , std::make_shared<SingleQuerySink>(sink, query)
+                 , queryOptions(query));
         }
     }
 

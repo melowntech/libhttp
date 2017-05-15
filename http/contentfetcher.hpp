@@ -50,13 +50,13 @@ public:
               maxCacheConections(0),
               pipelining(0)
         {}
-        
+
         unsigned long maxHostConnections;
         unsigned long maxTotalConections;
         unsigned long maxCacheConections;
         long pipelining;
     };
-    
+
     struct RequestOptions {
         RequestOptions()
             : followRedirects(true), lastModified(-1), reuse(true), timeout(-1)
@@ -74,6 +74,11 @@ public:
         bool reuse;
 
         long timeout;
+
+        /** Headers.
+         */
+        typedef std::vector<std::pair<std::string, std::string>> Headers;
+        Headers headers;
     };
 
     void fetch(const std::string &location
