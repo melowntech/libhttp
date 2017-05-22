@@ -476,7 +476,7 @@ void ServerConnection::readRequest()
             }
         }
 
-        readHeader();
+        readHeader(self);
     });
 
     requests_.back().clear();
@@ -484,10 +484,8 @@ void ServerConnection::readRequest()
                            , strand_.wrap(parseRequest));
 }
 
-void ServerConnection::readHeader()
+void ServerConnection::readHeader(const pointer &self)
 {
-    auto self(shared_from_this());
-
     auto parseHeader([self, this](const bs::error_code &ec
                                   , std::size_t bytes)
     {
@@ -535,7 +533,7 @@ void ServerConnection::readHeader()
 
             // eat '\n'
             is.get();
-            readHeader();
+            readHeader(self);
             return;
         }
 
@@ -555,7 +553,7 @@ void ServerConnection::readHeader()
         // eat '\n'
         is.get();
 
-        readHeader();
+        readHeader(self);
     });
 
     asio::async_read_until(socket_, requestData_, "\r\n"
