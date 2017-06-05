@@ -60,7 +60,6 @@ class CurlClient;
 
 class ClientConnection
     : boost::noncopyable
-    , public std::enable_shared_from_this<ClientConnection>
 {
 public:
     typedef std::set<ClientConnection*> set;

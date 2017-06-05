@@ -607,7 +607,7 @@ void CurlClient::run(unsigned int id)
 void CurlClient::add(std::unique_ptr<ClientConnection> &&conn)
 {
     auto *c(conn.get());
-    connections_.insert(conn.get());
+    connections_.insert(c);
     LOG(debug) << "Adding connection " << c->handle();
     CHECK_CURLM_STATUS(::curl_multi_add_handle
                        (multi_, c->handle())
@@ -618,11 +618,11 @@ void CurlClient::add(std::unique_ptr<ClientConnection> &&conn)
 void CurlClient::remove(ClientConnection *conn)
 {
     if (connections_.erase(conn)) {
+        std::unique_ptr<ClientConnection> ptr(conn);
         LOG(debug) << "Removing connection " << conn->handle();
         CHECK_CURLM_STATUS(::curl_multi_remove_handle
                            (multi_, conn->handle())
                            , "curl_multi_remove_handle");
-        delete conn;
     }
 }
 

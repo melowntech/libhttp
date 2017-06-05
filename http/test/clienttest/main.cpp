@@ -89,7 +89,9 @@ int main(int argc, const char *args[])
         if (f.is_open()) {
             urls.clear();
             while (std::getline(f,line)) {
-                urls.push_back(line);
+                if (!line.empty()) {
+                    urls.push_back(line);
+                }
             }
             f.close();
         } else {
@@ -103,7 +105,7 @@ int main(int argc, const char *args[])
     
     {
         http::ContentFetcher::Options options;
-        options.maxHostConnections = 1;
+        options.maxTotalConections = 3;
         options.pipelining = 2;
         htt.startClient(2, &options);
     }
@@ -111,7 +113,7 @@ int main(int argc, const char *args[])
     for (unsigned long i = 0; i < targetDownloads; i++)
     {
         while (active > 10)
-            usleep(10000);
+            usleep(1000);
         auto t = std::make_shared<Task>(urls[rand() % urls.size()]);
         fetcher.perform(t->query, std::bind(&Task::done, t,
                                             std::placeholders::_1));

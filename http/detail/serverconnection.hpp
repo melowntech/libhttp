@@ -86,7 +86,7 @@ public:
 private:
     void startRequest();
     void readRequest();
-    void readHeader();
+    void readHeader(const pointer &self);
 
     Request pop() {
         auto r(requests_.front());
