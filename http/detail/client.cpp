@@ -297,19 +297,41 @@ void ClientConnection::notify(::CURLcode result)
         }
 
         case 3: {
-            char *url(nullptr);
             switch (httpCode) {
+            case 300:
+                sink_->error(make_error_code
+                             (utility::HttpCode::MultipleChoices));
+                break;
+
+            case 305:
+                sink_->error(make_error_code
+                             (utility::HttpCode::UseProxy));
+                break;
+
+            case 306:
+                sink_->error(make_error_code
+                             (utility::HttpCode::SwitchProxy));
+                break;
+
             case 304:
                 sink_->notModified();
                 break;
 
-            default:
-                // TODO: distinguish between codes
+            case 301:
+            case 302:
+            case 303:
+            case 307:
+            case 308: {
+                char *url(nullptr);
                 LOG_CURL_STATUS(::curl_easy_getinfo
                                 (easy_, CURLINFO_EFFECTIVE_URL, &url)
                                 , "curl_easy_getinfo");
-                sink_->seeOther(url);
-                break;
+
+                sink_->redirect(url, static_cast<utility::HttpCode>(httpCode));
+                break; }
+
+            default:
+                sink_->error(utility::make_http_error_code(httpCode));
             }
             break;
         }
@@ -334,21 +356,40 @@ void ClientConnection::notify(::CURLcode result)
                 break;
 
             default:
-                sink_->error(make_error_code(utility::HttpCode::BadRequest));
+                sink_->error(utility::make_http_error_code(httpCode));
                 break;
             }
             break;
 
         default:
             switch (httpCode) {
+            case 500:
+                sink_->error(make_error_code
+                             (utility::HttpCode::InternalServerError));
+                break;
+
+            case 501:
+                sink_->error(make_error_code
+                             (utility::HttpCode::NotImplemented));
+                break;
+
+            case 502:
+                sink_->error(make_error_code
+                             (utility::HttpCode::BadGateway));
+                break;
+
             case 503:
                 sink_->error(make_error_code
                              (utility::HttpCode::ServiceUnavailable));
                 break;
 
-            default:
+            case 504:
                 sink_->error(make_error_code
-                             (utility::HttpCode::InternalServerError));
+                             (utility::HttpCode::GatewayTimeout));
+                break;
+
+            default:
+                sink_->error(utility::make_http_error_code(httpCode));
                 break;
             }
             break;

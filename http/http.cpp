@@ -957,11 +957,11 @@ private:
         sendResponse(request_, response, source);
    }
 
-    virtual void seeOther_impl(const std::string &url)
+    virtual void redirect_impl(const std::string &url, utility::HttpCode code)
     {
         if (!valid()) { return; }
 
-        Response response(StatusCode::Found);
+        Response response(code);
         response.headers.emplace_back("Location", url);
         sendResponse(request_, response);
     }

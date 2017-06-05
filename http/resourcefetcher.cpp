@@ -52,7 +52,7 @@ struct SingleQuerySink : public http::ClientSink {
     virtual void error_impl(const std::error_code &ec
                             , const std::string &message);
 
-    virtual void seeOther_impl(const std::string &url);
+    virtual void redirect_impl(const std::string &url, utility::HttpCode code);
 
     std::shared_ptr<QuerySink> owner;
     ResourceFetcher::Query *query;
@@ -187,9 +187,10 @@ void SingleQuerySink::error_impl(const std::error_code &ec
     owner->ping();
 }
 
-void SingleQuerySink::seeOther_impl(const std::string &url)
+void SingleQuerySink::redirect_impl(const std::string &url
+                                    , utility::HttpCode code)
 {
-    query->redirect(url);
+    query->redirect(url, make_error_code(code));
     owner->ping();
 }
 
