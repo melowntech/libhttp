@@ -445,7 +445,6 @@ void ClientConnection::processHeader()
 {
     if (ba::iequals(headerName_, "Cache-Control")) {
         // cache control, parse
-
         std::string token;
         std::time_t ma(constants::cacheUnspecified);
         std::time_t sma(constants::cacheUnspecified);
@@ -458,18 +457,22 @@ void ClientConnection::processHeader()
         std::istringstream is(headerValue_);
         while (is) {
             is >> token;
-            if (ba::iequals(token, "private")) {
+            if (ba::istarts_with(token, "private")) {
                 private_ = true;
-            } else if (ba::iequals(token, "public")) {
+            } else if (ba::istarts_with(token, "public")) {
                 public_ = true;
-            } if (ba::iequals(token, "no-cache")) {
+            } if (ba::istarts_with(token, "no-cache")) {
                 noCache = true;
                 break;
-            } else if (ba::iequals(token, "s-maxage")) {
-                is >> utility::expect('=') >> sma;
-            } else if (ba::iequals(token, "max-age")) {
-                is >> utility::expect('=') >> ma;
-            } else if (ba::iequals(token, "must-revalidate")) {
+            } else if (ba::istarts_with(token, "s-maxage=")) {
+				std::istringstream t(token);
+                t.ignore(9);
+                t >> sma;
+            } else if (ba::istarts_with(token, "max-age=")) {
+				std::istringstream t(token);
+                t.ignore(8);
+                t >> ma;
+            } else if (ba::istarts_with(token, "must-revalidate")) {
                 mustRevalidate = true;
             }
         }
