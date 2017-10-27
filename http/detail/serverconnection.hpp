@@ -49,7 +49,7 @@ public:
         : id_(++idGenerator_)
         , lm_(dbglog::make_module(str(boost::format("conn:%s") % id_)))
         , owner_(owner), ios_(ios), strand_(ios), socket_(ios_)
-        , requestData_(1024) // max line size
+        , requestData_(1 << 13) // max line size; TODO: make configurable
         , state_(State::ready)
         , contentGenerator_(contentGenerator)
     {}

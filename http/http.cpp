@@ -437,6 +437,7 @@ void ServerConnection::readRequest()
 
         if (ec) {
             // handle error
+            // TODO: handle too long line -> 400 Bad Request
             close(ec);
             return;
         }
@@ -493,6 +494,7 @@ void ServerConnection::readHeader(const pointer &self)
 
         if (ec) {
             // handle error
+            // TODO: handle too long line -> 400 Bad Request
             close(ec);
             return;
         }
