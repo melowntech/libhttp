@@ -585,10 +585,6 @@ void ServerConnection::sendResponse(const Request &request
 {
     std::ostream os(&responseData_);
 
-    LOG(info4) << "MESSAGE: <"
-               << utility::httpCodeCategory()
-        .message(static_cast<int>(response.code)) << ">";
-
     os << request.version << ' ' << response.numericCode() << ' '
        << utility::httpCodeCategory().message(static_cast<int>(response.code))
        << "\r\n";
