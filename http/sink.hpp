@@ -155,6 +155,15 @@ public:
      */
     void redirect(const std::string &url, utility::HttpCode code);
 
+    /** Tell client to look somewhere else with caching information.
+     *
+     * \param url location where to redirect
+     * \param code HTTP code (302, 303, ...)
+     * \param maxAge cache-control max age
+     */
+    void redirect(const std::string &url, utility::HttpCode code
+                  , const boost::optional<long> &maxAge);
+
     /** Sends given error to the client.
      */
     template <typename T> void error(const T &exc);
@@ -166,7 +175,8 @@ private:
     virtual void error_impl(const std::exception_ptr &exc) = 0;
     virtual void error_impl(const std::error_code &ec
                             , const std::string &message) = 0;
-    virtual void redirect_impl(const std::string &url, utility::HttpCode) = 0;
+    virtual void redirect_impl(const std::string &url, utility::HttpCode
+                               , const boost::optional<long> &maxAge) = 0;
 };
 
 /** Sink for sending/receiving data to/from the client.
@@ -266,7 +276,13 @@ inline void ServerSink::content(const DataSource::pointer &source)
 
 inline void SinkBase::redirect(const std::string &url, utility::HttpCode code)
 {
-    redirect_impl(url, code);
+    redirect_impl(url, code, boost::none);
+}
+
+inline void SinkBase::redirect(const std::string &url, utility::HttpCode code
+                               , const boost::optional<long> &maxAge)
+{
+    redirect_impl(url, code, maxAge);
 }
 
 inline void SinkBase::error(const std::exception_ptr &exc)

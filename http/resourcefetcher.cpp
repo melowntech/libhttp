@@ -52,7 +52,8 @@ struct SingleQuerySink : public http::ClientSink {
     virtual void error_impl(const std::error_code &ec
                             , const std::string &message);
 
-    virtual void redirect_impl(const std::string &url, utility::HttpCode code);
+    virtual void redirect_impl(const std::string &url, utility::HttpCode code
+                               , const boost::optional<long> &maxAge);
 
     std::shared_ptr<QuerySink> owner;
     ResourceFetcher::Query *query;
@@ -188,8 +189,10 @@ void SingleQuerySink::error_impl(const std::error_code &ec
 }
 
 void SingleQuerySink::redirect_impl(const std::string &url
-                                    , utility::HttpCode code)
+                                    , utility::HttpCode code
+                                    , const boost::optional<long> &/*maxAge*/)
 {
+    // TODO: use max age
     query->redirect(url, make_error_code(code));
     owner->ping();
 }

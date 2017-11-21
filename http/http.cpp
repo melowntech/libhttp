@@ -585,6 +585,10 @@ void ServerConnection::sendResponse(const Request &request
 {
     std::ostream os(&responseData_);
 
+    LOG(info4) << "MESSAGE: <"
+               << utility::httpCodeCategory()
+        .message(static_cast<int>(response.code)) << ">";
+
     os << request.version << ' ' << response.numericCode() << ' '
        << utility::httpCodeCategory().message(static_cast<int>(response.code))
        << "\r\n";
@@ -662,7 +666,8 @@ void ServerConnection
     std::ostream os(&responseData_);
 
     os << request.version << ' ' << response.numericCode() << ' '
-       << response.code << "\r\n";
+       << utility::httpCodeCategory().message(static_cast<int>(response.code))
+       << "\r\n";
 
     os << "Date: " << formatHttpDate(-1) << "\r\n";
     os << "Server: " << owner_.serverHeader() << "\r\n";
@@ -899,6 +904,21 @@ void ServerConnection
                              , source, dataSize)->start();
 }
 
+inline void addCacheControl(Response &response
+                            , const boost::optional<long> &maxAge)
+{
+    if (!maxAge) { return; }
+
+    const auto ma(*maxAge);
+    if (ma < 0) {
+        response.headers.emplace_back("Cache-Control", "no-cache");
+    } else {
+        response.headers.emplace_back
+            ("Cache-Control"
+             , str(boost::format("max-age=%d") % ma));
+    }
+}
+
 class HttpSink : public ServerSink {
 public:
     HttpSink(const Request &request
@@ -935,17 +955,7 @@ private:
         response.headers.emplace_back
             ("Last-Modified", formatHttpDate(stat.lastModified));
 
-        if (stat.maxAge) {
-            auto maxAge(*stat.maxAge);
-            if (maxAge < 0) {
-                response.headers.emplace_back("Cache-Control", "no-cache");
-            } else {
-                response.headers.emplace_back
-                    ("Cache-Control"
-                     , str(boost::format("max-age=%d") % maxAge));
-            }
-        }
-
+        addCacheControl(response, stat.maxAge);
         sendResponse(request_, response, data, size, !needCopy);
     }
 
@@ -957,12 +967,14 @@ private:
         sendResponse(request_, response, source);
    }
 
-    virtual void redirect_impl(const std::string &url, utility::HttpCode code)
+    virtual void redirect_impl(const std::string &url, utility::HttpCode code
+                               , const boost::optional<long> &maxAge)
     {
         if (!valid()) { return; }
 
         Response response(code);
         response.headers.emplace_back("Location", url);
+        addCacheControl(response, maxAge);
         sendResponse(request_, response);
     }
 
