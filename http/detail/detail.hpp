@@ -54,7 +54,7 @@ typedef asio::ip::tcp tcp;
 
 namespace detail {
 class ServerConnection;
-class Request;
+struct Request;
 class Acceptor;
 } // namespace detail
 

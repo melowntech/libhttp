@@ -100,8 +100,8 @@ public:
      */
     ContentFetcher& fetcher();
 
-    struct Detail;
-    friend struct Detail;
+    class Detail;
+    friend class Detail;
 
 private:
     std::shared_ptr<Detail> detail_;
