@@ -159,7 +159,7 @@ public:
      */
     template <typename T> void error(const T &exc);
 
-private:
+protected: // needed do to -Wvirtual-override
     virtual void content_impl(const void *data, std::size_t size
                               , const FileInfo &stat, bool needCopy
                               , const Header::list *headers) = 0;
@@ -216,6 +216,7 @@ public:
     void content(const DataSource::pointer &source);
 
 private:
+    using SinkBase::content_impl; // needed do to -Wvirtual-override
     virtual void content_impl(const DataSource::pointer &source) = 0;
     virtual void listing_impl(const Listing &list) = 0;
     virtual bool checkAborted_impl() const = 0;
