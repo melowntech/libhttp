@@ -4,7 +4,7 @@ set(http_VERSION 1.4)
 set(http_DEPENDS )
 
 define_module(LIBRARY http=${http_VERSION}
-  DEPENDS utility>=1.19 dbglog>=1.4 Boost CURL)
+  DEPENDS utility>=1.24 dbglog>=1.4 Boost CURL)
 
 set(http_SOURCES
   http.hpp http.cpp
@@ -19,7 +19,19 @@ set(http_SOURCES
   detail/serverconnection.hpp
 
   detail/client.cpp
+
+  detail/httpdate.hpp
 )
+
+if(WIN32)
+  list(APPEND http_SOURCES
+    detail/httpdate.windows.cpp
+    )
+else()
+  list(APPEND http_SOURCES
+    detail/httpdate.posix.cpp
+    )
+endif()
 
 add_library(http STATIC ${http_SOURCES})
 buildsys_library(http)

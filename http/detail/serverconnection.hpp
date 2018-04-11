@@ -110,7 +110,7 @@ private:
     Http::Detail &owner_;
 
     asio::io_service &ios_;
-    asio::strand strand_;
+    asio::io_service::strand strand_;
     tcp::socket socket_;
     asio::streambuf requestData_;
     asio::streambuf responseData_;

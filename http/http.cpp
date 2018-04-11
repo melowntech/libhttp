@@ -23,6 +23,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
+#ifdef _WIN32
+#  include <SDKDDKVer.h>
+#  include <Winsock2.h>
+#else
+#  include <arpa/inet.h>
+#endif
+
 #include <ctime>
 #include <algorithm>
 #include <atomic>
@@ -33,8 +41,6 @@
 #include <boost/noncopyable.hpp>
 #include <boost/asio.hpp>
 #include <boost/format.hpp>
-
-#include <arpa/inet.h>
 
 #include "dbglog/dbglog.hpp"
 
@@ -50,28 +56,12 @@
 #include "./detail/types.hpp"
 #include "./detail/serverconnection.hpp"
 #include "./detail/acceptor.hpp"
+#include "./detail/httpdate.hpp"
 #include "./asio.hpp"
 
 namespace ba = boost::algorithm;
 
 namespace http {
-
-namespace detail {
-const char *weekDays[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
-
-std::string formatHttpDate(std::time_t time)
-{
-    if (time < 0) { time = std::time(nullptr); }
-    tm bd;
-    ::gmtime_r(&time, &bd);
-    char buf[32];
-    std::memcpy(buf, weekDays[bd.tm_wday], 3);
-    std::strftime(buf + 3, sizeof(buf) - 1
-                  , ", %d %b %Y %H:%M:%S GMT", &bd);
-    return buf;
-}
-
-} // namespace detail
 
 namespace {
 
@@ -160,7 +150,7 @@ void Http::Detail::startClient(std::size_t count,
             << "HTTP client-side machinery is already running.";
     }
 
-    for (std::size_t id(1); id <= count; ++id) {
+    for (int id(1); id <= int(count); ++id) {
         clients_.push_back(std::make_shared<detail::CurlClient>(id, options));
     }
     currentClient_ = clients_.begin();
@@ -801,7 +791,7 @@ void ServerConnection
                 }
                 chunk = os.str();
             } else {
-                bytesLeft -= s;
+                bytesLeft -= long(s);
             }
 
             off += s;

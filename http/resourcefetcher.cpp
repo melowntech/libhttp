@@ -87,7 +87,7 @@ public:
                            : pointer())
                           , query_->front())
         , ios_(ios)
-        , queriesLeft_(query_->size())
+        , queriesLeft_(int(query_->size()))
     {}
 
     void ping() {
