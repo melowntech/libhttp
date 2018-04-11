@@ -1,5 +1,5 @@
 # bump version here
-set(http_VERSION 1.4)
+set(http_VERSION 1.5)
 
 set(http_DEPENDS )
 
