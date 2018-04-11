@@ -26,6 +26,9 @@
 #ifndef http_resourcefetcher_hpp_included_
 #define http_resourcefetcher_hpp_included_
 
+#ifdef _WIN32
+#  include <SDKDDKVer.h>
+#endif
 #include <boost/asio.hpp>
 
 #include "utility/resourcefetcher.hpp"

@@ -57,7 +57,7 @@ void OnDemandClient::Detail
     try {
         std::lock_guard<std::mutex> lock(mutex_);
         if (clients.empty()) {
-            for (std::size_t i(0); i < threadCount; ++i) {
+            for (int i(0); i < int(threadCount); ++i) {
                 clients.push_back(std::make_shared<detail::CurlClient>(i));
             }
             currentClient = clients.begin();
