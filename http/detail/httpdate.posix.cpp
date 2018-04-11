@@ -24,6 +24,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <time.h>
+#include <ctime>
+#include <cstring>
+
 #include "./httpdate.hpp"
 
 namespace http { namespace detail {
