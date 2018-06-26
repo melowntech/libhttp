@@ -69,36 +69,42 @@ const std::string error400(R"RAW(<html>
 <head><title>400 Bad Request</title></head>
 <body bgcolor="white">
 <center><h1>400 Bad Request</h1></center>
+</body></html>
 )RAW");
 
 const std::string error403(R"RAW(<html>
 <head><title>403 Forbidden</title></head>
 <body bgcolor="white">
 <center><h1>403 Forbidden</h1></center>
+</body></html>
 )RAW");
 
 const std::string error404(R"RAW(<html>
 <head><title>404 Not Found</title></head>
 <body bgcolor="white">
 <center><h1>404 Not Found</h1></center>
-)RAW");
-
-const std::string error500(R"RAW(<html>
-<head><title>500 Internal Server Error</title></head>
-<body bgcolor="white">
-<center><h1>500 Internal Server Error</h1></center>
-)RAW");
-
-const std::string error503(R"RAW(<html>
-<head><title>503 Service Temporarily Unavailable</title></head>
-<body bgcolor="white">
-<center><h1>503 Service Temporarily Unavailable</h1></center>
+</body></html>
 )RAW");
 
 const std::string error405(R"RAW(<html>
 <head><title>405 Method Not Allowed</title></head>
 <body bgcolor="white">
 <center><h1>405 Method Not Allowed</h1></center>
+</body></html>
+)RAW");
+
+const std::string error500(R"RAW(<html>
+<head><title>500 Internal Server Error</title></head>
+<body bgcolor="white">
+<center><h1>500 Internal Server Error</h1></center>
+</body></html>
+)RAW");
+
+const std::string error503(R"RAW(<html>
+<head><title>503 Service Temporarily Unavailable</title></head>
+<body bgcolor="white">
+<center><h1>503 Service Temporarily Unavailable</h1></center>
+</body></html>
 )RAW");
 
 } // namespace
@@ -1051,10 +1057,22 @@ private:
             sendError(code, error500, message);
             break;
 
-        default:
-            sendError(utility::HttpCode::InternalServerError
-                      , error500, message);
-            break;
+        default: {
+            const auto &category(utility::httpCodeCategory());
+            const auto numCode(static_cast<int>(code));
+            const auto name(category.message(numCode));
+
+            std::ostringstream os;
+            os << "<html>\n<head><title>" << numCode << " " << name
+               << "</title></head>\n"
+               << "<body bgcolor=\"white\">\n"
+               << "<center><h1>" << numCode << " " << name
+               << "</h1></center>\n"
+               << "</body></html>\n"
+                ;
+
+            sendError(code, os.str(), message);
+            break; }
         }
     }
 
