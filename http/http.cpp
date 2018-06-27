@@ -1100,6 +1100,8 @@ private:
         } catch (const utility::HttpError &e) {
             errorCode(static_cast<utility::HttpCode>(e.code().value())
                       , e.what());
+        } catch (const std::invalid_argument &e) {
+            errorCode(StatusCode::UnprocessableEntity, e.what());
         } catch (const std::exception &e) {
             errorCode(StatusCode::InternalServerError, e.what());
         } catch (...) {
