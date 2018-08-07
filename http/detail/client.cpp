@@ -855,7 +855,7 @@ int CurlClient::timeout_cb(long int timeout)
             }
         });
     } else if (!timeout) {
-        action();
+        ios_.post([this]() { action(); });
     } else {
         // negative: cancel
         timer_.cancel();
