@@ -100,6 +100,8 @@ public:
      */
     ContentFetcher& fetcher();
 
+    void stat(std::ostream &os) const;
+
     class Detail;
     friend class Detail;
 

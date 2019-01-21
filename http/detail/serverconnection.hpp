@@ -83,6 +83,8 @@ public:
 
     ContentGenerator::pointer contentGenerator() { return contentGenerator_; }
 
+    void countRequest() { owner_.request(); }
+
 private:
     void startRequest();
     void readRequest();

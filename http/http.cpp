@@ -121,6 +121,8 @@ Http::Detail::Detail()
     , dnsCache_(ios_)
     , running_(false)
     , serverHeader_("httpd/unknown")
+    , connectionCounter_(512)
+    , requestCounter_(512)
     , currentClient_()
 {}
 
@@ -231,6 +233,7 @@ void Http::Detail::worker(std::size_t id)
 void Http::Detail
 ::addServerConnection(const detail::ServerConnection::pointer &conn)
 {
+    connectionCounter_.event();
     std::unique_lock<std::mutex> lock(connMutex_);
     connections_.insert(conn);
 }
@@ -283,6 +286,8 @@ void postLog(const ServerConnection::pointer &connection
              , const Request &request, const Response &response
              , std::size_t size)
 {
+    connection->countRequest();
+
     if (response.code == StatusCode::OK) {
         LOG(info3, connection->lm())
             << "HTTP \"" << request.method << ' ' << request.uri
@@ -1215,6 +1220,17 @@ const std::string* Request::getHeader(const std::string &name) const
 boost::asio::io_service& ioService(const Http &http)
 {
     return Http::Detail::detail(http).ioService();
+}
+
+void Http::Detail::stat(std::ostream &os) const
+{
+    connectionCounter_.average(os, "http.connections.");
+    requestCounter_.average(os, "http.requests.");
+}
+
+void Http::stat(std::ostream &os) const
+{
+    return detail().stat(os);
 }
 
 } // namespace http

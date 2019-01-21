@@ -38,6 +38,7 @@
 #include <boost/optional.hpp>
 
 #include "utility/buildsys.hpp"
+#include "utility/eventcounter.hpp"
 
 #include "../http.hpp"
 #include "../contentfetcher.hpp"
@@ -102,6 +103,10 @@ public:
 
     const std::string& serverHeader() const { return serverHeader_; }
 
+    void request() { requestCounter_.event(); }
+
+    void stat(std::ostream &os) const;
+
 private:
     virtual void fetch_impl(const std::string &location
                             , const ClientSink::pointer &sink
@@ -120,6 +125,8 @@ private:
     std::condition_variable connCond_;
     std::atomic<bool> running_;
     std::string serverHeader_;
+    utility::EventCounter connectionCounter_;
+    utility::EventCounter requestCounter_;
 
     std::mutex clientMutex_;
 

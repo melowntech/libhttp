@@ -4,7 +4,7 @@ set(http_VERSION 1.6)
 set(http_DEPENDS )
 
 define_module(LIBRARY http=${http_VERSION}
-  DEPENDS utility>=1.24 dbglog>=1.4 Boost CURL)
+  DEPENDS utility>=1.27 dbglog>=1.4 Boost CURL)
 
 set(http_SOURCES
   http.hpp http.cpp
