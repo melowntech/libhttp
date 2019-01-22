@@ -1224,8 +1224,8 @@ boost::asio::io_service& ioService(const Http &http)
 
 void Http::Detail::stat(std::ostream &os) const
 {
-    connectionCounter_.average(os, "http.connections.");
-    requestCounter_.average(os, "http.requests.");
+    connectionCounter_.averageAndMax(os, "http.connections.");
+    requestCounter_.averageAndMax(os, "http.requests.");
 }
 
 void Http::stat(std::ostream &os) const
