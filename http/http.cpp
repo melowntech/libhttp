@@ -656,6 +656,44 @@ void ServerConnection::sendResponse(const Request &request
     }
 }
 
+inline bool buildCacheControlLine(std::ostream &os
+                                  , const SinkBase::CacheControl &cacheControl
+                                  , const std::string &prefix = "")
+{
+    if (!cacheControl.maxAge) { return false; }
+
+    const auto ma(*cacheControl.maxAge);
+    if (ma < 0) {
+        os << prefix << "no-cache";
+        return true;
+    }
+
+    os << prefix << "max-age=" << ma;
+    if (cacheControl.staleWhileRevalidate > 0) {
+        os << ", stale-while-revalidate="
+           << cacheControl.staleWhileRevalidate;
+    }
+
+    return true;
+}
+
+inline void addCacheControl(Response &response
+                            , const SinkBase::CacheControl &cacheControl)
+{
+    std::ostringstream os;
+    if (buildCacheControlLine(os, cacheControl)) {
+        response.headers.emplace_back("Cache-Control", os.str());
+    }
+}
+
+inline void addCacheControl(std::ostream &os
+                            , const SinkBase::CacheControl &cacheControl)
+{
+    if (buildCacheControlLine(os, cacheControl, "Cache-Control: ")) {
+        os << "\r\n";
+    }
+}
+
 void ServerConnection
 ::sendResponse(const Request &request, const Response &response
                , const SinkBase::DataSource::pointer &source)
@@ -677,14 +715,8 @@ void ServerConnection
     os << "Content-Type: " << stat.contentType << "\r\n";
     os << "Last-Modified: " << formatHttpDate(stat.lastModified) << "\r\n";
 
-    if (stat.maxAge) {
-        auto maxAge(*stat.maxAge);
-        if (maxAge < 0) {
-            os << "Cache-Control: no-cache\r\n";
-        } else {
-            os << "Cache-Control: max-age=" << maxAge << "\r\n";
-        }
-    }
+    // caching
+    addCacheControl(os, stat.cacheControl);
 
     // optional data
     auto dataSize(source->size());
@@ -901,21 +933,6 @@ void ServerConnection
                              , source, dataSize)->start();
 }
 
-inline void addCacheControl(Response &response
-                            , const boost::optional<long> &maxAge)
-{
-    if (!maxAge) { return; }
-
-    const auto ma(*maxAge);
-    if (ma < 0) {
-        response.headers.emplace_back("Cache-Control", "no-cache");
-    } else {
-        response.headers.emplace_back
-            ("Cache-Control"
-             , str(boost::format("max-age=%d") % ma));
-    }
-}
-
 class HttpSink : public ServerSink {
 public:
     HttpSink(const Request &request
@@ -952,7 +969,7 @@ private:
         response.headers.emplace_back
             ("Last-Modified", formatHttpDate(stat.lastModified));
 
-        addCacheControl(response, stat.maxAge);
+        addCacheControl(response, stat.cacheControl);
         sendResponse(request_, response, data, size, !needCopy);
     }
 
@@ -965,13 +982,13 @@ private:
    }
 
     virtual void redirect_impl(const std::string &url, utility::HttpCode code
-                               , const boost::optional<long> &maxAge)
+                               , const CacheControl &cacheControl)
     {
         if (!valid()) { return; }
 
         Response response(code);
         response.headers.emplace_back("Location", url);
-        addCacheControl(response, maxAge);
+        addCacheControl(response, cacheControl);
         sendResponse(request_, response);
     }
 

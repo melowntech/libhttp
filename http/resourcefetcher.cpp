@@ -53,7 +53,7 @@ struct SingleQuerySink : public http::ClientSink {
                             , const std::string &message);
 
     virtual void redirect_impl(const std::string &url, utility::HttpCode code
-                               , const boost::optional<long> &maxAge);
+                               , const CacheControl &cacheControl);
 
     std::shared_ptr<QuerySink> owner;
     ResourceFetcher::Query *query;
@@ -168,8 +168,8 @@ void SingleQuerySink::content_impl(const void *data, std::size_t size
 {
     // TODO: make better (use response Date field)
     std::time_t expires(-1);
-    if (stat.maxAge && (*stat.maxAge >= 0)) {
-        expires = std::time(nullptr) + *stat.maxAge;
+    if (stat.cacheControl.maxAge && (*stat.cacheControl.maxAge >= 0)) {
+        expires = std::time(nullptr) + *stat.cacheControl.maxAge;
     }
     query->set(stat.lastModified, expires, data, size, stat.contentType);
     owner->ping();
@@ -190,7 +190,7 @@ void SingleQuerySink::error_impl(const std::error_code &ec
 
 void SingleQuerySink::redirect_impl(const std::string &url
                                     , utility::HttpCode code
-                                    , const boost::optional<long> &/*maxAge*/)
+                                    , const CacheControl&)
 {
     // TODO: use max age
     query->redirect(url, make_error_code(code));

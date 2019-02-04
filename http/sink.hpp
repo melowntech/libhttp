@@ -48,6 +48,24 @@ public:
     SinkBase() {}
     virtual ~SinkBase() {}
 
+    struct CacheControl  {
+        /** File max age. <0: no-cache, >=0 max-age=value
+         */
+        boost::optional<long> maxAge;
+
+        /** File stale-while-revalidated value. Used only when
+         *  >0 and max-age >= 0.
+         *
+         *  More info: https://tools.ietf.org/html/rfc5861#section-3
+         */
+        long staleWhileRevalidate;
+
+        CacheControl(const boost::optional<long> &maxAge = boost::none
+                     , long staleWhileRevalidate = 0)
+            : maxAge(maxAge), staleWhileRevalidate(staleWhileRevalidate)
+        {}
+    };
+
     struct FileInfo {
         /** File content type.
          */
@@ -57,15 +75,21 @@ public:
          */
         std::time_t lastModified;
 
-        /** File max age. <0: no-cache, >=0 max-age=value
+        /** Cache control header data.
          */
-        boost::optional<long> maxAge;
+        CacheControl cacheControl;
 
         FileInfo(const std::string &contentType = "application/octet-stream"
                  , std::time_t lastModified = -1
-                 , const boost::optional<long> &maxAge = boost::none)
+                 , const CacheControl &cacheControl = CacheControl())
             : contentType(contentType), lastModified(lastModified)
-            , maxAge(maxAge)
+            , cacheControl(cacheControl)
+        {}
+
+        FileInfo(const std::string &contentType
+                 , std::time_t lastModified, long maxAge)
+            : contentType(contentType), lastModified(lastModified)
+            , cacheControl(maxAge)
         {}
     };
 
@@ -159,10 +183,10 @@ public:
      *
      * \param url location where to redirect
      * \param code HTTP code (302, 303, ...)
-     * \param maxAge cache-control max age
+     * \param cacheControl cache-control header
      */
     void redirect(const std::string &url, utility::HttpCode code
-                  , const boost::optional<long> &maxAge);
+                  , const CacheControl &cacheControl);
 
     /** Sends given error to the client.
      */
@@ -176,7 +200,7 @@ protected: // needed do to -Wvirtual-override
     virtual void error_impl(const std::error_code &ec
                             , const std::string &message) = 0;
     virtual void redirect_impl(const std::string &url, utility::HttpCode
-                               , const boost::optional<long> &maxAge) = 0;
+                               , const CacheControl &cacheControl) = 0;
 };
 
 /** Sink for sending/receiving data to/from the client.
@@ -277,13 +301,13 @@ inline void ServerSink::content(const DataSource::pointer &source)
 
 inline void SinkBase::redirect(const std::string &url, utility::HttpCode code)
 {
-    redirect_impl(url, code, boost::none);
+    redirect_impl(url, code, CacheControl());
 }
 
 inline void SinkBase::redirect(const std::string &url, utility::HttpCode code
-                               , const boost::optional<long> &maxAge)
+                               , const CacheControl &cacheControl)
 {
-    redirect_impl(url, code, maxAge);
+    redirect_impl(url, code, cacheControl);
 }
 
 inline void SinkBase::error(const std::exception_ptr &exc)
