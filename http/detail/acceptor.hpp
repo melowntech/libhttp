@@ -36,7 +36,7 @@
 
 namespace http { namespace detail {
 
-class Acceptor {
+class Acceptor : public std::enable_shared_from_this<Acceptor> {
 public:
     typedef std::shared_ptr<Acceptor> pointer;
     typedef std::vector<pointer> list;
@@ -44,13 +44,16 @@ public:
     Acceptor(Http::Detail &owner, asio::io_service &ios
              , const utility::TcpEndpoint &listen
              , const ContentGenerator::pointer &contentGenerator)
-        : owner_(owner), ios_(ios), acceptor_(ios_, listen.value, true)
+        : owner_(owner), ios_(ios), strand_(ios)
+        , acceptor_(ios_, listen.value, true)
         , contentGenerator_(contentGenerator)
-    {
-        start();
-    }
+    {}
 
     void start();
+
+    typedef std::function<void(const pointer&)> StoppedHandler;
+
+    void stop(const StoppedHandler &done);
 
     utility::TcpEndpoint localEndpoint() const {
         return utility::TcpEndpoint(acceptor_.local_endpoint());
@@ -59,6 +62,7 @@ public:
 private:
     Http::Detail &owner_;
     asio::io_service &ios_;
+    asio::io_service::strand strand_;
     tcp::acceptor acceptor_;
     ContentGenerator::pointer contentGenerator_;
 };

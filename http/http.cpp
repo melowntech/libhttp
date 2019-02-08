@@ -175,19 +175,36 @@ void Http::Detail::stop()
     }
 
     // server side second;
+
     {
         std::unique_lock<std::mutex> lock(connMutex_);
 
-        // get rid of all acceptors
-        acceptors_.clear();
+        const auto acceptorDone([&](const detail::Acceptor::pointer &acceptor)
+        {
+            // erase acceptor from the list of acceptors
+            std::unique_lock<std::mutex> lock(connMutex_);
+            auto end(std::remove(acceptors_.begin(), acceptors_.end()
+                                 , acceptor));
+            acceptors_.erase(end, acceptors_.end());
 
+            connCond_.notify_one();
+        });
+
+        // stop accepting new connections
+        for (const auto &acceptor : acceptors_) {
+            acceptor->stop(acceptorDone);
+        }
+
+        // wait for all acceptors to terminate
+        while (!acceptors_.empty()) { connCond_.wait(lock); }
+
+        // forcibly close all connections
         for (const auto &item : connections_) {
-            item->close();
+            item->closeConnection();
         }
 
-        while (!connections_.empty()) {
-            connCond_.wait(lock);
-        }
+        // wait for connections to stop
+        while (!connections_.empty()) { connCond_.wait(lock); }
     }
 
     work_ = boost::none;
@@ -209,6 +226,7 @@ Http::Detail::listen(const utility::TcpEndpoint &listen
 
     acceptors_.push_back(std::make_shared<detail::Acceptor>
                          (*this, ios_, listen, contentGenerator));
+    acceptors_.back()->start();
     return acceptors_.back()->localEndpoint();
 }
 
@@ -255,8 +273,10 @@ void Acceptor::start()
     auto conn(std::make_shared<ServerConnection>
               (owner_, ios_, contentGenerator_));
 
-    acceptor_.async_accept(conn->socket()
-                           , [=](const bs::error_code &ec)
+    auto self(shared_from_this());
+    acceptor_.async_accept
+        (conn->socket(), strand_.wrap([self, this, conn]
+                                      (const bs::error_code &ec)
     {
         if (!ec) {
             owner_.addServerConnection(conn);
@@ -269,6 +289,20 @@ void Acceptor::start()
         }
 
         start();
+    }));
+}
+
+void Acceptor::stop(const StoppedHandler &done)
+{
+    auto self(shared_from_this());
+    strand_.post([self, this, done]()
+    {
+        // close, ignore errors
+        bs::error_code ec;
+        acceptor_.close(ec);
+
+        // notify owner
+        done(self);
     });
 }
 
@@ -406,6 +440,12 @@ void ServerConnection::close()
         bs::error_code cec;
         socket_.close(cec);
     }
+}
+
+void ServerConnection::closeConnection()
+{
+    auto self(shared_from_this());
+    strand_.post([self, this]() { close(); });
 }
 
 bool ServerConnection::valid() const

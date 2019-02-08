@@ -73,7 +73,7 @@ public:
 
     bool valid() const;
 
-    void close();
+    void closeConnection();
 
     dbglog::module& lm() { return lm_; }
 
@@ -98,6 +98,8 @@ private:
 
     void process();
     void badRequest();
+
+    void close();
     void close(const bs::error_code &ec);
 
     void makeReady();
