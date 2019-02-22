@@ -94,7 +94,7 @@ public:
         // decrement
         if (!--queriesLeft_) {
             try {
-                LOG(info2) << "All subqueries finished.";
+                LOG(info1) << "All subqueries finished.";
                 if (ios_) {
                     // need to copy
                     auto &done(done_);
@@ -106,7 +106,7 @@ public:
                     done_(std::move(*query_));
                 }
             } catch (const std::exception &e) {
-                LOG(err2)
+                LOG(err1)
                     << "Resource(s) fetch callback failed: <"
                     << e.what() << ">.";
             }
