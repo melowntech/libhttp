@@ -59,7 +59,8 @@ public:
 
     struct RequestOptions {
         RequestOptions()
-            : followRedirects(true), lastModified(-1), reuse(true), timeout(-1)
+            : followRedirects(true), lastModified(-1), reuse(true)
+            , timeout(-1), delay()
         {}
 
         bool followRedirects;
@@ -79,6 +80,12 @@ public:
          */
         typedef std::vector<std::pair<std::string, std::string>> Headers;
         Headers headers;
+
+        /** Delayed request execution. Delay in milliseconds before request is
+         *  performed.
+         *  Zero means immediate action.
+         */
+        unsigned long delay;
     };
 
     void fetch(const std::string &location

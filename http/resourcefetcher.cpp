@@ -135,6 +135,7 @@ public:
             ContentFetcher::RequestOptions options;
             options.reuse = query.reuse();
             options.timeout = query.timeout();
+            options.delay = query.delay();
             const auto &headers(query.options());
             options.headers.assign(headers.begin(), headers.end());
             return options;

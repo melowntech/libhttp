@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017 Melown Technologies SE
+ * Copyright (c) 2017-2019 Melown Technologies SE
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -23,8 +23,13 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
+#include <chrono>
+
 #include <boost/format.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/chrono/duration.hpp>
+#include <boost/asio/steady_timer.hpp>
 
 #include "dbglog/dbglog.hpp"
 
@@ -633,14 +638,41 @@ void CurlClient::fetch(const std::string &location
                        , const ClientSink::pointer &sink
                        , const ContentFetcher::RequestOptions &options)
 {
-    ios_.post([=]()
+    if (!options.delay) {
+        // immediate query
+        ios_.post([=]() -> void
+        {
+            try {
+                return add
+                    (std::unique_ptr<ClientConnection>
+                     (new ClientConnection(*this, location, sink, options)));
+            } catch (...) {
+                sink->error();
+            }
+        });
+        return;
+    }
+
+    // delayed query
+    auto timer(std::make_shared<asio::steady_timer>
+               (ios_, std::chrono::milliseconds(options.delay)));
+
+    // NB: we need to capture timer otherwise it would go out of scope
+    timer->async_wait([timer, this, location, sink, options]
+                      (const bs::error_code &ec) mutable -> void
     {
-        try {
-            add(std::unique_ptr<ClientConnection>
-                (new ClientConnection(*this, location, sink, options)));
-        } catch (...) {
-            sink->error();
+        if (ec != asio::error::operation_aborted) {
+            try {
+                add(std::unique_ptr<ClientConnection>
+                    (new ClientConnection(*this, location, sink, options)));
+            } catch (...) {
+                sink->error();
+            }
+            return;
         }
+
+        // forward error
+        sink->error(ec);
     });
 }
 
