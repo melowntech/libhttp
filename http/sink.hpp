@@ -64,6 +64,8 @@ public:
                      , long staleWhileRevalidate = 0)
             : maxAge(maxAge), staleWhileRevalidate(staleWhileRevalidate)
         {}
+
+        operator bool() const { return bool(maxAge); }
     };
 
     struct FileInfo {
