@@ -1,10 +1,10 @@
 # bump version here
-set(http_VERSION 1.6)
+set(http_VERSION 1.7)
 
 set(http_DEPENDS )
 
 define_module(LIBRARY http=${http_VERSION}
-  DEPENDS utility>=1.28 dbglog>=1.4 Boost CURL)
+  DEPENDS utility>=1.29 dbglog>=1.4 Boost CURL)
 
 set(http_SOURCES
   http.hpp http.cpp
