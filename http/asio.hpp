@@ -28,7 +28,7 @@
 
 #include <boost/asio.hpp>
 
-#include "./http.hpp"
+#include "http.hpp"
 
 namespace http {
 

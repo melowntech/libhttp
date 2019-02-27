@@ -34,8 +34,8 @@
 
 #include <boost/optional.hpp>
 
-#include "./error.hpp"
-#include "./request.hpp"
+#include "error.hpp"
+#include "request.hpp"
 
 namespace http {
 

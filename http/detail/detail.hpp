@@ -42,8 +42,8 @@
 
 #include "../http.hpp"
 #include "../contentfetcher.hpp"
-#include "./dnscache.hpp"
-#include "./curl.hpp"
+#include "dnscache.hpp"
+#include "curl.hpp"
 
 namespace http {
 

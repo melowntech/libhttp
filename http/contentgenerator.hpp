@@ -32,8 +32,8 @@
 #include <memory>
 #include <exception>
 
-#include "./sink.hpp"
-#include "./request.hpp"
+#include "sink.hpp"
+#include "request.hpp"
 
 namespace http {
 

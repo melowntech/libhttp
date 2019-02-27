@@ -30,7 +30,7 @@
 #include <string>
 #include <mutex>
 
-#include "./resourcefetcher.hpp"
+#include "resourcefetcher.hpp"
 
 namespace http {
 

@@ -38,10 +38,10 @@
 
 #include "../error.hpp"
 
-#include "./detail.hpp"
+#include "detail.hpp"
 
-#include "./curl.hpp"
-#include "./types.hpp"
+#include "curl.hpp"
+#include "types.hpp"
 
 namespace ba = boost::algorithm;
 

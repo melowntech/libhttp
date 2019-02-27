@@ -28,7 +28,7 @@
 #include <ctime>
 #include <cstring>
 
-#include "./httpdate.hpp"
+#include "httpdate.hpp"
 
 namespace http { namespace detail {
 

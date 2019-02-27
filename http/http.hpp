@@ -31,8 +31,8 @@
 
 #include "utility/tcpendpoint.hpp"
 
-#include "./contentgenerator.hpp"
-#include "./contentfetcher.hpp"
+#include "contentgenerator.hpp"
+#include "contentfetcher.hpp"
 
 namespace http {
 

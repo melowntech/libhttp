@@ -25,8 +25,8 @@
  */
 #include "dbglog/dbglog.hpp"
 
-#include "./contentfetcher.hpp"
-#include "./resourcefetcher.hpp"
+#include "contentfetcher.hpp"
+#include "resourcefetcher.hpp"
 
 namespace asio = boost::asio;
 

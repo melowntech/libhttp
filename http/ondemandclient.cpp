@@ -26,9 +26,9 @@
 
 #include <boost/optional.hpp>
 
-#include "./ondemandclient.hpp"
-#include "./contentfetcher.hpp"
-#include "./detail/curl.hpp"
+#include "ondemandclient.hpp"
+#include "contentfetcher.hpp"
+#include "detail/curl.hpp"
 
 namespace http {
 

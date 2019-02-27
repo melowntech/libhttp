@@ -50,14 +50,14 @@
 #include "utility/thread.hpp"
 #include "utility/uri.hpp"
 
-#include "./error.hpp"
-#include "./http.hpp"
-#include "./detail/detail.hpp"
-#include "./detail/types.hpp"
-#include "./detail/serverconnection.hpp"
-#include "./detail/acceptor.hpp"
-#include "./detail/httpdate.hpp"
-#include "./asio.hpp"
+#include "error.hpp"
+#include "http.hpp"
+#include "detail/detail.hpp"
+#include "detail/types.hpp"
+#include "detail/serverconnection.hpp"
+#include "detail/acceptor.hpp"
+#include "detail/httpdate.hpp"
+#include "asio.hpp"
 
 namespace ba = boost::algorithm;
 

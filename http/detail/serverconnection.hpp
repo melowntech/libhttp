@@ -32,7 +32,7 @@
 
 #include "utility/enum-io.hpp"
 
-#include "./detail.hpp"
+#include "detail.hpp"
 
 namespace http { namespace detail {
 

@@ -32,8 +32,8 @@
 #include <memory>
 #include <exception>
 
-#include "./constants.hpp"
-#include "./sink.hpp"
+#include "constants.hpp"
+#include "sink.hpp"
 
 namespace http {
 
