@@ -1032,40 +1032,39 @@ private:
         sendResponse(request_, response);
     }
 
-    virtual void listing_impl(const Listing &list)
+    virtual void listing_impl(const Listing &list, const std::string &header
+                              , const std::string &footer)
     {
         if (!valid()) { return; }
 
         std::string path(request_.path);
 
         std::ostringstream os;
-        os << R"RAW(<html>
-<head><title>Index of )RAW" << path
-           << R"RAW(</title></head>
-<body bgcolor="white">
-<h1>Index of )RAW"
-           << path
-           << "\n</h1><hr><pre><a href=\"../\">../</a>\n";
+        os << "<html>\n<head><title>Index of " << path
+           << "</title></head>\n<body bgcolor=\"white\">\n"
+           << "<h1>Index of " << path << "\n";
+        if (!header.empty()) { os << header << '\n'; }
+        os << "</h1><hr><pre><a href=\"../\">../</a>\n";
 
         auto sorted(list);
         std::sort(sorted.begin(), sorted.end());
 
         for (const auto &item : sorted) {
             switch (item.type) {
-            case ListingItem::Type::file:
+            case ServerSink::ListingItem::Type::file:
                 os << "<a href=\"" << item.name << "\">"
                    << item.name << "</a>\n";
                 break;
-            case ListingItem::Type::dir:
+            case ServerSink::ListingItem::Type::dir:
                 os << "<a href=\"" << item.name << "/\">"
                    << item.name << "/</a>\n";
                 break;
             }
         }
 
-        os << R"RAW(</pre><hr></body>
-</html>
-)RAW";
+        os << "</pre><hr>\n";
+        if (!footer.empty()) { os << footer << '\n'; }
+        os << "</body>\n</html>\n";
 
         content(os.str(), { "text/html; charset=utf-8", -1, -1 });
     }

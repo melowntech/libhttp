@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017 Melown Technologies SE
+ * Copyright (c) 2017-2019 Melown Technologies SE
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -31,6 +31,7 @@
 #include <vector>
 #include <memory>
 #include <exception>
+#include <iosfwd>
 
 #include <boost/optional.hpp>
 
@@ -231,7 +232,8 @@ public:
 
     /** Generates listing.
      */
-    void listing(const Listing &list);
+    void listing(const Listing &list, const std::string &header = ""
+                 , const std::string &footer = "");
 
     /** Checks wheter client aborted request.
      *  Throws RequestAborted exception when true.
@@ -254,7 +256,8 @@ public:
 private:
     using SinkBase::content_impl; // needed do to -Wvirtual-override
     virtual void content_impl(const DataSource::pointer &source) = 0;
-    virtual void listing_impl(const Listing &list) = 0;
+    virtual void listing_impl(const Listing &list, const std::string &header
+                              , const std::string &footer) = 0;
     virtual bool checkAborted_impl() const = 0;
     virtual void setAborter_impl(const AbortedCallback &ac) = 0;
 };
@@ -332,7 +335,12 @@ template <typename T> inline void SinkBase::error(const T &exc) {
     error_impl(std::make_exception_ptr(exc));
 }
 
-inline void ServerSink::listing(const Listing &list) { listing_impl(list); }
+inline void ServerSink::listing(const Listing &list
+                                , const std::string &header
+                                , const std::string &footer)
+{
+    listing_impl(list, header, footer);
+}
 
 inline void ServerSink::setAborter(const AbortedCallback &ac) {
     setAborter_impl(ac);
