@@ -20,17 +20,17 @@ public:
     {
         active++;
         started++;
-        query.timeout(-1);
+        query.timeout(5000);
     }
-    
+
     ~Task()
     {
         active--;
     }
-    
+
     void done(http::ResourceFetcher::MultiQuery &&queries)
     {
-		finished++;
+        finished++;
         http::ResourceFetcher::Query &q = *queries.begin();
         if (q.exc())
         {
@@ -49,7 +49,7 @@ public:
         }
         else if (q.valid())
         {
-			succeded++;
+            succeded++;
             const http::ResourceFetcher::Query::Body &body = q.get();
             LOG(info3) << "Downloaded: '" << q.location()
                        << "', size: " << body.data.length();
@@ -58,30 +58,28 @@ public:
             LOG(err3) << "Failed: " << q.location()
                       << ", http code: " << q.ec().value();
     }
-    
+
     http::ResourceFetcher::Query query;
 };
 
 int main(int argc, const char *args[])
 {
-    //dbglog::set_mask("ALL");
-    
     LOG(info4) << "Usage: " << args[0]
                << " [target-downloads-count [urls-file-path]]";
-    
+
     unsigned long targetDownloads = 100;
     std::vector<std::string> urls({
         "https://www.melown.com/",
         "https://www.melown.com/tutorials.html",
         "https://www.melown.com/blog.html",
     });
-    
+
     if (argc > 1) {
         std::stringstream s(args[1]);
         s >> targetDownloads;
     }
     LOG(info4) << "Target number of downloads: " << targetDownloads << ".";
-    
+
     if (argc > 2) {
         LOG(info4) << "Loading urls from file.";
         std::string line;
@@ -99,26 +97,26 @@ int main(int argc, const char *args[])
         }
     }
     LOG(info4) << "Will download from " << urls.size() << " urls.";
-    
+
     http::Http htt;
     http::ResourceFetcher fetcher(htt.fetcher());
-    
+
     {
         http::ContentFetcher::Options options;
-        options.maxTotalConections = 3;
+        options.maxTotalConections = 10;
         options.pipelining = 2;
         htt.startClient(2, &options);
     }
-    
+
     for (unsigned long i = 0; i < targetDownloads; i++)
     {
-        while (active > 10)
+        while (active > 25)
             usleep(1000);
         auto t = std::make_shared<Task>(urls[rand() % urls.size()]);
         fetcher.perform(t->query, std::bind(&Task::done, t,
                                             std::placeholders::_1));
     }
-    
+
     LOG(info3) << "Waiting for threads to stop.";
     htt.stop();
 
