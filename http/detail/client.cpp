@@ -474,7 +474,7 @@ void ClientConnection::processHeader()
                 t.ignore(9);
                 t >> sma;
             } else if (ba::istarts_with(token, "max-age=")) {
-				std::istringstream t(token);
+                std::istringstream t(token);
                 t.ignore(8);
                 t >> ma;
             } else if (ba::istarts_with(token, "must-revalidate")) {
@@ -682,7 +682,7 @@ void CurlClient::fetch(const std::string &location
     if (purpose == CURLSOCKTYPE_IPCXN && address->family == AF_INET)
     {
         // remember socket
-        auto socket(std::make_shared<Socket>(ios_));
+        auto socket(Socket::create(ios_));
 
         bs::error_code ec;
         socket->socket.open(ip::tcp::v4(), ec);
@@ -693,8 +693,9 @@ void CurlClient::fetch(const std::string &location
         }
 
         auto native(socket->handle());
-        sockets_.insert(Socket::map::value_type(native, socket));
-        LOG(debug) << "Opened socket " << native << ".";
+        // LOG(info4)
+        //     << "Opened socket " << socket.get() << ", " << native << ".";
+        sockets_.insert(Socket::map::value_type(native, std::move(socket)));
         return native;
     }
 
@@ -706,120 +707,112 @@ int CurlClient::close_cb(::curl_socket_t s)
 {
     // find socket
     auto fsockets(sockets_.find(s));
-    if (fsockets == sockets_.end()) { return -1; }
+    if (fsockets == sockets_.end()) {
+        // LOG(info4) << "Unknown socket " << s << ".";
+        return -1;
+    }
 
     // manipulate
     auto *socket(fsockets->second.get());
-    // LOG(info4) << "Closing socket: " << socket;
-    if (socket->inProgress()) {
-        // we remove the socket right away since it is still hooked in the asio
-        // machinery
-        // mark as finished
-        // LOG(info4) << "Scheduling socket close: " << socket;
-        socket->finish();
 
-        // cancel now
+    // LOG(info4) << "Closing socket: " << socket->handle();
+    if (socket->inProgress()) {
+        // cancel pending operations now
         bs::error_code ec;
         socket->socket.cancel(ec);
-        return 0;
     }
 
-    // socket not used anywhere, we can kill the socket right away
-    // LOG(info4) << "Closed socket: " << socket;
-    sockets_.erase(fsockets);
+    // remove from map
+    // LOG(info4) << "Erasing socket " << s << ".";
+    sockets_.erase(s);
     return 0;
-}
-
-void CurlClient::shred(Socket *socket)
-{
-    // NB: this function must be called only when it is not hooked inside asio
-    // machinery
-
-    //remove socket from sockets
-    // LOG(info4) << "Closed socket: " << socket;
-    sockets_.erase(socket->handle());
 }
 
 void CurlClient::prepareRead(Socket *socket)
 {
-    // LOG(info4) << "Prepare read: " << socket;
-    socket->readInProgress = true;
+    // LOG(info4) << "Prepare read: " << socket->handle();
+    Socket::makeReading(socket, true);
     socket->socket.async_read_some
         (asio::null_buffers(), [=] (bs::error_code ec, std::size_t)
     {
         if (ec == asio::error::operation_aborted) { ec = {}; };
 
-        if (!ec) {
-            // LOG(info4) << "Reading: " << socket;
-            action(socket, CURL_CSELECT_IN);
+        auto handle(socket->handle());
 
-            socket->readInProgress = false;
-            if (socket->read) {
-                // LOG(info4) << "Calling prepare read again: " << socket;
-                prepareRead(socket);
-            } else {
-                // LOG(info4) << "Should not read: " << socket;
-                if (socket->finished()) { shred(socket); }
+        if (!ec) {
+            // LOG(info4) << "Reading: " << socket->handle();
+            action(handle, CURL_CSELECT_IN);
+
+            if (Socket::makeReading(socket, false)) {
+                // LOG(info4) << "Tying to make reading again";
+                if (socket->canRead()) {
+                    // LOG(info4)
+                    //     << "Calling prepare read again: " << socket->handle();
+                    prepareRead(socket);
+                }
             }
             return;
         }
 
-        // LOG(info4) << "Error: " << socket;
-        action(socket, CURL_CSELECT_ERR);
-        socket->readInProgress = false;
-        if (socket->finished()) { shred(socket); }
+        // LOG(info4) << "Error: " << socket->handle();
+        action(handle, CURL_CSELECT_ERR);
+        Socket::makeReading(socket, false);
     });
 
-    // LOG(info4) << "Out of read: " << socket;
+    // LOG(info4) << "Out of read: " << socket->handle();
 }
 
 void CurlClient::prepareWrite(Socket *socket)
 {
-    // LOG(info4) << "Prepare write: " << socket;
-    socket->writeInProgress = true;
+    // LOG(info4) << "Prepare write: " << socket->handle();
+    Socket::makeWriting(socket, true);
     socket->socket.async_write_some
         (asio::null_buffers(), [=] (bs::error_code ec, std::size_t)
     {
         if (ec == asio::error::operation_aborted) { ec = {}; };
 
-        if (!ec) {
-            // LOG(info4) << "Writing: " << socket;
-            action(socket, CURL_CSELECT_OUT);
+        auto handle(socket->handle());
 
-            socket->writeInProgress = false;
-            if (socket->write) {
-                // LOG(info4) << "Calling prepare write again: " << socket;
-                prepareWrite(socket);
-            } else {
-                // LOG(info4) << "Should not write: " << socket;
-                if (socket->finished()) { shred(socket); }
+        if (!ec) {
+            // LOG(info4) << "Writing: " << socket->handle();
+            action(handle, CURL_CSELECT_OUT);
+
+            if (Socket::makeWriting(socket, false)) {
+                if (socket->canWrite()) {
+                    // LOG(info4)
+                    //     << "Calling prepare write again: " << socket->handle();
+                    prepareWrite(socket);
+                }
             }
             return;
         }
 
         // let curl handle errors
-        // LOG(info4) << "Error: " << socket;
-        action(socket, CURL_CSELECT_ERR);
-        socket->writeInProgress = false;
-        if (socket->finished()) { shred(socket); }
+        // LOG(info4) << "Error: " << socket->handle();
+        action(handle, CURL_CSELECT_ERR);
+        Socket::makeWriting(socket, false);
     });
 
-    // LOG(info4) << "Out of write: " << socket;
+    // LOG(info4) << "Out of write: " << socket->handle();
 }
 
 int CurlClient::handle_cb(::CURL*, ::curl_socket_t s, int what, void *socketp)
 {
     if (what == CURL_POLL_REMOVE) {
-        LOG(debug) << "Asked to remove socket " << s << ".";
-        if (!socketp) { return 0; }
+        // LOG(info4) << "Asked to remove socket " << s << ".";
+        if (!socketp) {
+            // LOG(info4) << "No socket.";
+            return 0;
+        }
 
         auto *socket(static_cast<Socket*>(socketp));
 
-        // LOG(info4) << "Removing socket: " << socket;
-        socket->read = socket->write = false;
+        // LOG(info4) << "Removing socket: " << socket->handle()
+        //            << " (" << socket << ")";
+        socket->rw(false, false);
 
         if (socket->inProgress()) {
-            LOG(debug) << "Cancelling socket io: " << socket;
+            LOG(debug) << "Cancelling socket io: " << socket->handle();
             bs::error_code ec;
             socket->socket.cancel(ec);
         }
@@ -831,7 +824,7 @@ int CurlClient::handle_cb(::CURL*, ::curl_socket_t s, int what, void *socketp)
     Socket *socket;
 
     if (!socketp) {
-        // find
+        // no associated data (socket) provided -> find it via handle
         auto fsockets(sockets_.find(s));
         if (fsockets == sockets_.end()) {
             // OOPS, not found
@@ -853,27 +846,21 @@ int CurlClient::handle_cb(::CURL*, ::curl_socket_t s, int what, void *socketp)
     // bool oldWrite(socket->write);
 
     // update read/write markers
-    socket->read = bool(what & CURL_POLL_IN);
-    socket->write = bool(what & CURL_POLL_OUT);
+    socket->rw(what & CURL_POLL_IN, what & CURL_POLL_OUT);
 
     // LOG(info4) << "Socket state change: " << socket
     //            << ": read " << oldRead << "->" << socket->read
     //            << ", write " << oldWrite << "->" << socket->write;
 
-    if (socket->read && !socket->readInProgress) {
-        prepareRead(socket);
-    }
-
-    if (socket->write && !socket->writeInProgress) {
-        prepareWrite(socket);
-    }
+    if (socket->canRead()) { prepareRead(socket); }
+    if (socket->canWrite()) { prepareWrite(socket); }
 
     return 0;
 }
 
 int CurlClient::timeout_cb(long int timeout)
 {
-    LOG(debug) << "Handling timeout (" << timeout << ")";
+    // LOG(info4) << "Handling timeout (" << timeout << ")";
 
     if (timeout > 0) {
         // positive: update timer and wait
@@ -895,14 +882,13 @@ int CurlClient::timeout_cb(long int timeout)
     return 0;
 }
 
-void CurlClient::action(Socket *socket, int what)
+void CurlClient::action(::curl_socket_t socket, int what)
 {
     CHECK_CURLM_STATUS(::curl_multi_socket_action
-                       (multi_
-                        , (socket ? socket->handle()
-                           : CURL_SOCKET_TIMEOUT)
-                        , what, &runningTransfers_)
+                       (multi_, socket, what, &runningTransfers_)
                        , "curl_multi_socket_action");
+
+    // LOG(info4) << "action(" << socket << ", " << what << ")";
 
     // check message info
     int left(0);
@@ -951,3 +937,71 @@ void Http::Detail::fetch_impl(const std::string &location
 }
 
 } // namespace http
+
+/** CURL initialization
+ */
+#if defined(__linux__)
+#  include <signal.h>
+#endif
+
+/** Special configuration on linux: ignore SIGPIPE.
+ */
+namespace http { namespace {
+void linux() {
+#if defined(__linux__) && CURL_AT_LEAST_VERSION(7, 34, 0)
+        auto curl(::curl_easy_init());
+        if (!curl) {
+            std::cerr
+                << "HTTP clinet: CURL: cannot create easy handler."
+                << std::endl;
+            return;
+        }
+
+        const ::curl_tlssessioninfo *ssl(nullptr);
+#if CURL_AT_LEAST_VERSION(7, 48, 0)
+        auto res(::curl_easy_getinfo(curl, CURLINFO_TLS_SSL_PTR, &ssl));
+#else
+        auto res(::curl_easy_getinfo(curl, CURLINFO_TLS_SESSION, &ssl));
+#endif
+
+        if (res != CURLE_OK) {
+            std::cerr << "Error getting CURL SSL info: <"
+                      << ::curl_easy_strerror(res) << ">."
+                      << std::endl;
+        } else if (ssl->backend == CURLSSLBACKEND_OPENSSL) {
+            struct sigaction act{};
+            act.sa_handler = SIG_IGN;
+            act.sa_flags = SA_RESTART;
+            if (::sigaction(SIGPIPE, &act, NULL) == -1) {
+                std::cerr << "Unable to ignore SIGPIPE.";
+            }
+        }
+        ::curl_easy_cleanup(curl);
+#endif
+}
+
+static volatile struct Initializer {
+    Initializer()
+        : initialized(false)
+    {
+        auto res(::curl_global_init(CURL_GLOBAL_ALL));
+        if (res != CURLE_OK) {
+            std::cerr << "Error getting CURL SSL info: <"
+                      << ::curl_easy_strerror(res) << ">."
+                      << std::endl;
+            return;
+        }
+        initialized = true;
+
+        linux();
+    }
+
+    ~Initializer() {
+        if (initialized) { ::curl_global_cleanup(); }
+    }
+
+    bool initialized;
+
+} curlInitializer;
+
+} } // namespace http::

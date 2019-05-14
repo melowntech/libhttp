@@ -95,45 +95,68 @@ private:
 };
 
 struct Socket : boost::noncopyable {
-    typedef std::shared_ptr<Socket> pointer;
-    typedef std::map<curl_socket_t, pointer> map;
-
     ip::tcp::socket socket;
-    bool read;
-    bool write;
-    bool readInProgress;
-    bool writeInProgress;
 
-    Socket(asio::io_service &ios)
-        : socket(ios), read(false), write(false)
-        , readInProgress(false), writeInProgress(false)
-        , finished_(false)
-    {}
-
-    bool inProgress() const { return readInProgress || writeInProgress; }
-
-    void finish() {
-        read = write = readInProgress = writeInProgress = false;
-        finished_ = true;
-    }
-
-    bool finished() const {
-        return finished_ && !inProgress();
-    }
+    bool inProgress() const { return reading_ || writing_; }
 
     auto handle() -> decltype(socket.native_handle()) {
         return socket.native_handle();
     }
 
+    bool closed() { return !open_; }
+
+    int refCount() const { return open_ + reading_ + writing_; }
+
+    /** Set read/write flags
+     */
+    void rw(bool read, bool write) { read_ = read; write_ = write; }
+
+    bool canWrite() const { return write_ && !writing_; }
+    bool canRead() const { return read_ && !reading_; }
+
+    typedef std::unique_ptr<Socket, void(*)(Socket*)> pointer;
+    typedef std::map<curl_socket_t, pointer> map;
+
+    static bool makeWriting(Socket *s, bool value) {
+        s->writing_ = value;
+        if (!s->refCount()) { delete s; return false; }
+        return true;
+    }
+
+    static bool makeReading(Socket *s, bool value) {
+        s->reading_ = value;
+        if (!s->refCount()) { delete s; return false; }
+        return true;
+    }
+
+    static pointer create(asio::io_service &ios) {
+        return pointer(new Socket(ios), &close);
+    }
+
 private:
-    bool finished_;
+    Socket(asio::io_service &ios)
+        : socket(ios), read_(false), write_(false)
+        , open_(true)
+        , reading_(false), writing_(false)
+    {}
+
+    static void close(Socket *s) {
+        s->read_ = s->write_ = s->open_ = false;
+        if (!s->refCount()) { delete s; }
+    }
+
+    bool read_;
+    bool write_;
+    bool open_;
+    bool reading_;
+    bool writing_;
 };
 
 class CurlClient : boost::noncopyable {
 public:
     typedef std::shared_ptr<CurlClient> pointer;
     typedef std::vector<CurlClient::pointer> list;
-	CurlClient(int id, const ContentFetcher::Options *options = nullptr);
+    CurlClient(int id, const ContentFetcher::Options *options = nullptr);
     ~CurlClient();
 
     void fetch(const std::string &location
@@ -158,11 +181,10 @@ private:
     void stop();
     void run(unsigned int id);
 
-    void action(Socket *socket = nullptr, int what = 0);
+    void action(::curl_socket_t socket = CURL_SOCKET_TIMEOUT, int what = 0);
 
     void prepareRead(Socket *socket);
     void prepareWrite(Socket *socket);
-    void shred(Socket *socket);
 
     ::CURLM *multi_;
     asio::io_service ios_;

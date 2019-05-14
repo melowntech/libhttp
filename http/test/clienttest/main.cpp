@@ -3,10 +3,22 @@
 #include <fstream>
 #include <functional>
 #include <unistd.h> // usleep
-#include <dbglog/dbglog.hpp>
 
-#include <http/http.hpp>
-#include <http/resourcefetcher.hpp>
+#include <boost/optional.hpp>
+#include <boost/filesystem/path.hpp>
+
+#include "dbglog/dbglog.hpp"
+
+#include "utility/buildsys.hpp"
+#include "utility/gccversion.hpp"
+
+#include "service/cmdline.hpp"
+
+#include "http/http.hpp"
+#include "http/resourcefetcher.hpp"
+
+namespace po = boost::program_options;
+namespace fs = boost::filesystem;
 
 std::atomic<int> active;
 std::atomic<int> succeded;
@@ -62,28 +74,81 @@ public:
     http::ResourceFetcher::Query query;
 };
 
-int main(int argc, const char *args[])
-{
-    LOG(info4) << "Usage: " << args[0]
-               << " [target-downloads-count [urls-file-path]]";
+class Test : public service::Cmdline {
+public:
+    Test()
+        : service::Cmdline("http-clienttest", BUILD_TARGET_VERSION)
+        , targetDownloads_(100)
+        , threadCount_(2)
+    {}
 
-    unsigned long targetDownloads = 100;
+private:
+    virtual void configuration(po::options_description &cmdline
+                               , po::options_description &config
+                               , po::positional_options_description &pd)
+        UTILITY_OVERRIDE;
+
+    virtual void configure(const po::variables_map &vars)
+        UTILITY_OVERRIDE;
+
+    virtual bool help(std::ostream &out, const std::string &what) const
+        UTILITY_OVERRIDE
+    {
+        if (what.empty()) {
+            out << R"RAW(http-clienttest
+usage
+    http-clienttest [target-downloads-count [urls-file-path]] [OPTIONS]
+
+)RAW";
+        }
+        return false;
+    }
+
+    virtual int run() UTILITY_OVERRIDE;
+
+    std::size_t targetDownloads_;
+    boost::optional<fs::path> urls_;
+    std::size_t threadCount_;
+};
+
+
+void Test::configuration(po::options_description &cmdline
+                         , po::options_description&
+                         , po::positional_options_description &pd)
+{
+    cmdline.add_options()
+        ("count", po::value(&targetDownloads_)
+         ->required()->default_value(targetDownloads_)
+         , "Number of donwloads to perform.")
+         ("urls", po::value<fs::path>()
+          , "Path to URL file")
+        ("threadCount", po::value(&threadCount_)
+         ->default_value(threadCount_)->required()
+         , "Number of HTTP threads (and CURL clients).")
+         ;
+
+    pd.add("count", 1).add("urls", 1);
+}
+
+void Test::configure(const po::variables_map &vars)
+{
+    if (vars.count("urls")) {
+        urls_ = vars["urls"].as<fs::path>();
+    }
+}
+
+int Test::run()
+{
     std::vector<std::string> urls({
         "https://www.melown.com/",
         "https://www.melown.com/tutorials.html",
         "https://www.melown.com/blog.html",
     });
 
-    if (argc > 1) {
-        std::stringstream s(args[1]);
-        s >> targetDownloads;
-    }
-    LOG(info4) << "Target number of downloads: " << targetDownloads << ".";
-
-    if (argc > 2) {
+    if (urls_) {
         LOG(info4) << "Loading urls from file.";
         std::string line;
-        std::ifstream f(args[2]);
+        std::ifstream f(urls_->string());
         if (f.is_open()) {
             urls.clear();
             while (std::getline(f,line)) {
@@ -105,10 +170,10 @@ int main(int argc, const char *args[])
         http::ContentFetcher::Options options;
         options.maxTotalConections = 10;
         options.pipelining = 2;
-        htt.startClient(2, &options);
+        htt.startClient(threadCount_, &options);
     }
 
-    for (unsigned long i = 0; i < targetDownloads; i++)
+    for (unsigned long i = 0; i < targetDownloads_; i++)
     {
         while (active > 25)
             usleep(1000);
@@ -126,7 +191,10 @@ int main(int argc, const char *args[])
                << ", succeded: " << succeded
                << ".";
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
-
+int main(int argc, char *argv[])
+{
+    return Test()(argc, argv);
+}
