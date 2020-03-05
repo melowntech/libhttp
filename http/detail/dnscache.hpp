@@ -111,7 +111,7 @@ void DnsCache::resolve(const utility::Uri &uri, const ResolveHandler &rh)
 
         Entry entry;
         entry.expires = std::time(nullptr) + 300;
-        for (decltype(i) e; i != e; ++i) {
+        for (boost::asio::ip::tcp::resolver::iterator e; i != e; ++i) {
             entry.endpoints.push_back(i->endpoint());
         }
 
