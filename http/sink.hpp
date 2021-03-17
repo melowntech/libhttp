@@ -233,7 +233,8 @@ public:
     /** Generates listing.
      */
     void listing(const Listing &list, const std::string &header = ""
-                 , const std::string &footer = "");
+                 , const std::string &footer = ""
+                 , const Header::list *headers = nullptr);
 
     /** Checks wheter client aborted request.
      *  Throws RequestAborted exception when true.
@@ -257,7 +258,8 @@ private:
     using SinkBase::content_impl; // needed do to -Wvirtual-override
     virtual void content_impl(const DataSource::pointer &source) = 0;
     virtual void listing_impl(const Listing &list, const std::string &header
-                              , const std::string &footer) = 0;
+                              , const std::string &footer
+                              , const Header::list *headers) = 0;
     virtual bool checkAborted_impl() const = 0;
     virtual void setAborter_impl(const AbortedCallback &ac) = 0;
 };
@@ -337,9 +339,10 @@ template <typename T> inline void SinkBase::error(const T &exc) {
 
 inline void ServerSink::listing(const Listing &list
                                 , const std::string &header
-                                , const std::string &footer)
+                                , const std::string &footer
+                                , const Header::list *headers)
 {
-    listing_impl(list, header, footer);
+    listing_impl(list, header, footer, headers);
 }
 
 inline void ServerSink::setAborter(const AbortedCallback &ac) {

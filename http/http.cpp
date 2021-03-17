@@ -1033,7 +1033,8 @@ private:
     }
 
     virtual void listing_impl(const Listing &list, const std::string &header
-                              , const std::string &footer)
+                              , const std::string &footer
+                              , const Header::list *headers)
     {
         if (!valid()) { return; }
 
@@ -1066,7 +1067,7 @@ private:
         if (!footer.empty()) { os << footer << '\n'; }
         os << "</body>\n</html>\n";
 
-        content(os.str(), { "text/html; charset=utf-8", -1, -1 });
+        content(os.str(), { "text/html; charset=utf-8", -1, -1 }, headers);
     }
 
     void errorCode(utility::HttpCode code, const std::string &message)
