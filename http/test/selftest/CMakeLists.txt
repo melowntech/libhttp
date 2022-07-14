@@ -10,6 +10,6 @@ set(http-selftest_SOURCES
 
 add_executable(http-selftest ${http-selftest_SOURCES})
 target_link_libraries(http-selftest ${MODULE_LIBRARIES})
-buildsys_target_compile_definitions(http-selftest ${MODULE_DEFINITIONS})
+target_compile_definitions(http-selftest PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(http-selftest)
 set_target_version(http-selftest "test")
